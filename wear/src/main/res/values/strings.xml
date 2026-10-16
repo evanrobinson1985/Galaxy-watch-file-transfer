@@ -1,0 +1,12 @@
+<resources>
+    <string name="app_name">APK Installer</string>
+    <string name="ready">Ready. Send an APK from the Watch APK Installer app on your phone.</string>
+    <string name="allow_installs">Allow installs</string>
+    <string name="allow_notifications">Allow notifications</string>
+    <string name="install">Install</string>
+    <string name="close">Close</string>
+    <string name="open_app">Open app</string>
+    <string name="channel_name">Incoming APKs</string>
+    <string name="install_permission_missing">This app isn\'t allowed to install apps yet.</string>
+    <string name="install_permission_adb">Your watch has no settings screen for this. Run once from a computer:\n\nadb shell appops set com.evanrobinson.watchapk REQUEST_INSTALL_PACKAGES allow</string>
+</resources>

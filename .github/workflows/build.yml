@@ -1,0 +1,33 @@
+name: Build APKs
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build phone and watch APKs
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Collect APKs
+        run: |
+          mkdir -p out
+          cp mobile/build/outputs/apk/debug/mobile-debug.apk out/WatchApkInstaller-phone.apk
+          cp wear/build/outputs/apk/debug/wear-debug.apk out/WatchApkInstaller-watch.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WatchApkInstaller-apks
+          path: out/*.apk

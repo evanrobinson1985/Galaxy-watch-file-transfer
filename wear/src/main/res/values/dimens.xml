@@ -1,0 +1,5 @@
+<resources>
+    <!-- Keep content inside the round display. -->
+    <dimen name="round_inset_h">24dp</dimen>
+    <dimen name="round_inset_v">32dp</dimen>
+</resources>

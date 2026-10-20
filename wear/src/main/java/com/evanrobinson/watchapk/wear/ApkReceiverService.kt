@@ -33,6 +33,7 @@ class ApkReceiverService : WearableListenerService() {
         val wakeLock = (getSystemService(POWER_SERVICE) as PowerManager)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "WatchApk:receive")
         wakeLock.acquire(10 * 60 * 1000L)
+        TransferControl.begin(this, channel)
         try {
             val file = receive(client, channel)
             Log.i(TAG, "Received ${file.name} (${file.length()} bytes)")
@@ -48,6 +49,15 @@ class ApkReceiverService : WearableListenerService() {
                 PhoneReporter.send(this, nodeId, "received ${file.name}. Tap the notification on your watch to install.")
             }
         } catch (e: Exception) {
+            Notifications.cancelReceiving(this)
+            if (TransferControl.isCancelled) {
+                val message = TransferControl.cancelledMessage()
+                Log.i(TAG, message)
+                TransferState.set(TransferState.Status.Cancelled(message))
+                PhoneReporter.progress(this, nodeId, Protocol.PHASE_CANCELLED, 0)
+                PhoneReporter.send(this, nodeId, "transfer ${message.lowercase()}")
+                return
+            }
             Log.e(TAG, "Receive failed", e)
             val reason = "Receive failed: ${e.message ?: e.javaClass.simpleName}"
             Notifications.cancelReceiving(this)
@@ -55,6 +65,7 @@ class ApkReceiverService : WearableListenerService() {
             PhoneReporter.progress(this, nodeId, Protocol.PHASE_FAILED, 0)
             PhoneReporter.send(this, nodeId, reason)
         } finally {
+            TransferControl.end()
             runCatching { Tasks.await(client.close(channel)) }
             if (wakeLock.isHeld) wakeLock.release()
         }
@@ -83,6 +94,7 @@ class ApkReceiverService : WearableListenerService() {
                     var lastPercent = -1
                     var lastReportedBytes = 0L
                     while (true) {
+                        TransferControl.throwIfCancelled()
                         val read = data.read(buffer)
                         if (read < 0) break
                         out.write(buffer, 0, read)

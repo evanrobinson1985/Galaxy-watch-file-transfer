@@ -19,4 +19,7 @@
     <string name="update_watch_app">Update watch app</string>
     <string name="update_watch_app_to">Update watch app to v%1$s</string>
     <string name="reinstall_watch_app">Reinstall watch app (v%1$s)</string>
+    <string name="stop">Stop</string>
+    <string name="stopping">Stopping…</string>
+    <string name="stopped">Stopped</string>
 </resources>

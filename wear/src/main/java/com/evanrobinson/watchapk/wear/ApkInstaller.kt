@@ -60,6 +60,7 @@ object ApkInstaller {
             }
         }
 
+        TransferControl.begin(context, null)
         publish(context, nodeId, name, 0f)
         val sessionId = installer.createSession(params)
         var callback: PackageInstaller.SessionCallback? = null
@@ -101,7 +102,10 @@ object ApkInstaller {
                         }
                     }
                 }
-                publish(context, nodeId, name, STAGING_SHARE)
+                // Last chance to stop: once committed, the system owns the install.
+                TransferControl.throwIfCancelled()
+                publish(context, nodeId, name, STAGING_SHARE, committed = true)
+                TransferControl.end()
 
                 // Follow the system's progress for the rest of the install.
                 callback = object : PackageInstaller.SessionCallback() {
@@ -127,6 +131,7 @@ object ApkInstaller {
                 session.commit(pendingIntent.intentSender)
             }
         } catch (e: Exception) {
+            TransferControl.end()
             callback?.let { runCatching { installer.unregisterSessionCallback(it) } }
             runCatching { installer.abandonSession(sessionId) }
             throw e
@@ -138,7 +143,14 @@ object ApkInstaller {
      * does nothing once the install has already finished or failed.
      */
     @Synchronized
-    fun publish(context: Context, nodeId: String?, name: String, fraction: Float, userConfirmed: Boolean = false) {
+    fun publish(
+        context: Context,
+        nodeId: String?,
+        name: String,
+        fraction: Float,
+        userConfirmed: Boolean = false,
+        committed: Boolean = false,
+    ) {
         val current = TransferState.status.value
         val previous = (current as? TransferState.Status.Installing)
         if (current !is TransferState.Status.Installing && current !is TransferState.Status.ReadyToInstall) return
@@ -146,12 +158,13 @@ object ApkInstaller {
         val value = maxOf(previous?.fraction ?: 0f, fraction.coerceIn(0f, 1f))
         // Progress moving past the staging part means the user already confirmed.
         val waiting = (previous?.waitingForUser ?: false) && !(userConfirmed && value > (previous?.fraction ?: 0f))
-        if (previous != null && previous.waitingForUser == waiting &&
+        val isCommitted = committed || (previous?.committed ?: false)
+        if (previous != null && previous.waitingForUser == waiting && previous.committed == isCommitted &&
             (value * 100).toInt() == (previous.fraction * 100).toInt()
         ) {
             return
         }
-        TransferState.set(TransferState.Status.Installing(name, value, waiting))
+        TransferState.set(TransferState.Status.Installing(name, value, waiting, isCommitted))
         val phase = if (waiting) Protocol.PHASE_WAITING_FOR_USER else Protocol.PHASE_INSTALLING
         PhoneReporter.progress(context, nodeId, phase, (value * 100).toInt())
     }
@@ -163,6 +176,7 @@ object ApkInstaller {
             if (read < 0) break
             out.write(buffer, 0, read)
             onBytes(read)
+            TransferControl.throwIfCancelled()
         }
     }
 

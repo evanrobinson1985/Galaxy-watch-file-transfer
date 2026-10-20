@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
 import android.text.format.Formatter
@@ -46,8 +47,12 @@ class MainActivity : ComponentActivity() {
     private lateinit var detail: TextView
     private lateinit var primaryButton: Button
     private lateinit var secondaryButton: Button
+    private lateinit var stopButton: Button
 
     private var locked = false
+
+    /** Whether the current touch gesture started on the Stop button (the only thing tappable while locked). */
+    private var touchOnStop = false
 
     /** Path of the file we already auto-started an install for, so we only do it once. */
     private var autoInstalledPath: String? = null
@@ -71,6 +76,14 @@ class MainActivity : ComponentActivity() {
         detail = findViewById(R.id.detail)
         primaryButton = findViewById(R.id.primaryButton)
         secondaryButton = findViewById(R.id.secondaryButton)
+        stopButton = findViewById(R.id.stopButton)
+
+        // Hold, not tap, so a stray touch or gesture can't stop a transfer.
+        stopButton.setOnClickListener { Toast.makeText(this, R.string.hold_to_stop_hint, Toast.LENGTH_SHORT).show() }
+        stopButton.setOnLongClickListener {
+            if (TransferControl.requestCancel(TransferControl.BY_WATCH)) stopButton.isEnabled = false
+            true
+        }
 
         onBackPressedDispatcher.addCallback(this, backBlocker)
         // The theme turns off the system swipe-to-dismiss so we can switch it off while busy.
@@ -127,8 +140,17 @@ class MainActivity : ComponentActivity() {
 
     @SuppressLint("ClickableViewAccessibility")
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        if (locked) return true
+        if (locked) {
+            if (ev.actionMasked == MotionEvent.ACTION_DOWN) touchOnStop = isOnStopButton(ev)
+            return if (touchOnStop) super.dispatchTouchEvent(ev) else true
+        }
         return super.dispatchTouchEvent(ev)
+    }
+
+    private fun isOnStopButton(ev: MotionEvent): Boolean {
+        if (!stopButton.isShown || !stopButton.isEnabled) return false
+        val rect = Rect()
+        return stopButton.getGlobalVisibleRect(rect) && rect.contains(ev.rawX.toInt(), ev.rawY.toInt())
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -177,6 +199,12 @@ class MainActivity : ComponentActivity() {
         setLocked(status.busy)
         primaryButton.visibility = View.GONE
         secondaryButton.visibility = View.GONE
+        if (status.cancellable) {
+            if (stopButton.visibility != View.VISIBLE) stopButton.isEnabled = true
+            stopButton.visibility = View.VISIBLE
+        } else {
+            stopButton.visibility = View.GONE
+        }
         percent.visibility = View.GONE
         ring.visibility = View.GONE
 
@@ -258,6 +286,12 @@ class MainActivity : ComponentActivity() {
                 showButton(secondaryButton, R.string.done) { TransferState.set(TransferState.Status.Idle) }
             }
 
+            is TransferState.Status.Cancelled -> {
+                title.text = getString(R.string.stopped)
+                detail.text = status.message
+                showButton(primaryButton, R.string.ok) { TransferState.set(TransferState.Status.Idle) }
+            }
+
             is TransferState.Status.Failure -> {
                 title.text = getString(R.string.failed)
                 detail.text = status.message
@@ -294,8 +328,15 @@ class MainActivity : ComponentActivity() {
             try {
                 withContext(Dispatchers.IO) { ApkInstaller.install(applicationContext, file, nodeId) }
             } catch (e: Exception) {
-                val reason = e.message ?: e.javaClass.simpleName
                 file.delete()
+                if (TransferControl.isCancelled) {
+                    val message = TransferControl.cancelledMessage()
+                    TransferState.set(TransferState.Status.Cancelled(message))
+                    PhoneReporter.progress(this@MainActivity, nodeId, Protocol.PHASE_CANCELLED, 0)
+                    PhoneReporter.send(this@MainActivity, nodeId, "install ${message.lowercase()}")
+                    return@launch
+                }
+                val reason = e.message ?: e.javaClass.simpleName
                 TransferState.set(TransferState.Status.Failure(reason))
                 PhoneReporter.progress(this@MainActivity, nodeId, Protocol.PHASE_FAILED, 0)
                 PhoneReporter.send(this@MainActivity, nodeId, "install failed: $reason")

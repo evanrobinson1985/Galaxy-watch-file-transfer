@@ -15,10 +15,14 @@ object TransferState {
         /** True while a transfer or install is running; the UI locks itself and stays awake. */
         val busy: Boolean get() = false
 
+        /** True while the Stop button can still stop it. */
+        val cancellable: Boolean get() = false
+
         data object Idle : Status
 
         data class Receiving(val name: String, val bytes: Long, val total: Long) : Status {
             override val busy: Boolean get() = true
+            override val cancellable: Boolean get() = true
             val fraction: Float get() = if (total > 0) (bytes.toFloat() / total).coerceIn(0f, 1f) else 0f
         }
 
@@ -28,13 +32,18 @@ object TransferState {
             val name: String,
             val fraction: Float,
             val waitingForUser: Boolean = false,
+            /** Handed to the system; from here on it can't be stopped. */
+            val committed: Boolean = false,
         ) : Status {
             override val busy: Boolean get() = true
+            override val cancellable: Boolean get() = !waitingForUser && !committed
         }
 
         data class Success(val name: String, val packageName: String?) : Status
 
         data class Failure(val message: String) : Status
+
+        data class Cancelled(val message: String) : Status
     }
 
     private val _status = MutableStateFlow<Status>(Status.Idle)

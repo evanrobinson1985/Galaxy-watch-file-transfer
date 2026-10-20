@@ -13,6 +13,14 @@ Supported files: plain `.apk`, and split bundles `.apks` / `.xapk` (a zip of sev
 
 The transfer runs over the Wearable Data Layer (the same Bluetooth/Wi-Fi link Galaxy Wearable uses), so you don't need to set up Wi-Fi debugging every time you want to install something.
 
+## What's new in 4.0
+
+- **Stop buttons.**
+  - On the watch, **press and hold** the red **Hold to stop** button. Holding is required so a stray touch or wrist gesture can't stop a transfer by accident. Every other touch stays blocked while busy.
+  - On the phone, tap **Stop** under the progress bars. The phone tells the watch to stop and shows **Stopped** once the watch confirms.
+  - You can stop during the file transfer and the first part of the install, while the APK is still being handed to Android. After that, Android's installer is in control and the install can't be stopped, so the button goes away. Cancel on Android's confirmation screen instead.
+- Update both apps as before: install the new phone app, then tap **Update watch app**.
+
 ## What's new in 3.0
 
 - **Update the watch app from the phone (over the air).** The phone app carries a copy of the matching watch app. Under **Find watch**, it shows the watch app's version and an **Update watch app** button. Tap it and the phone sends the watch app to the watch, which installs it over itself. Confirm on the watch if it asks. The watch app closes during the update, then tells the phone it's on the new version.

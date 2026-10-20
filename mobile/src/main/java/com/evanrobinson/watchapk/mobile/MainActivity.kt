@@ -28,6 +28,7 @@ import com.google.android.material.progressindicator.LinearProgressIndicator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -53,6 +54,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
     private lateinit var transferText: TextView
     private lateinit var installProgress: LinearProgressIndicator
     private lateinit var installText: TextView
+    private lateinit var stopButton: MaterialButton
 
     private var selectedUri: Uri? = null
     private var selectedName: String = "app.apk"
@@ -73,6 +75,14 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
     /** True while the watch reports it is still receiving or installing. */
     private var watchBusy = false
     private var watchBusyTimeout: Job? = null
+
+    /** Whether the watch's current step can still be stopped (not once Android's installer took over). */
+    private var watchCancellable = false
+
+    /** The user tapped Stop for the current transfer. */
+    private var userCancelled = false
+
+    private var currentChannel: ChannelClient.Channel? = null
 
     /** Once the watch reports receive progress, its numbers drive the transfer bar. */
     private var watchReportsReceive = false
@@ -106,6 +116,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         transferText = findViewById(R.id.transferText)
         installProgress = findViewById(R.id.installProgress)
         installText = findViewById(R.id.installText)
+        stopButton = findViewById(R.id.stopButton)
 
         onBackPressedDispatcher.addCallback(this, backBlocker)
         findWatchButton.setOnClickListener { findWatch() }
@@ -113,6 +124,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         pickButton.setOnClickListener { pickApk.launch(arrayOf("*/*")) }
         sendButton.setOnClickListener { sendSelectedFile() }
         updateWatchButton.setOnClickListener { sendWatchAppUpdate() }
+        stopButton.setOnClickListener { stopTransfer() }
 
         // Listen for the whole lifetime of the screen so progress isn't missed while paused.
         Wearable.getMessageClient(this).addListener(this)
@@ -164,17 +176,21 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         when (phase) {
             Protocol.PHASE_RECEIVING -> {
                 watchReportsReceive = true
+                watchCancellable = true
                 setTransfer(percent, "$percent%")
                 setWatchBusy(true)
             }
 
             Protocol.PHASE_INSTALLING -> {
+                // Up to 80% is copying into the installer, which can still be stopped.
+                watchCancellable = percent < 80
                 setTransfer(100, getString(R.string.transfer_done))
                 setInstall(percent, "$percent%")
                 setWatchBusy(true)
             }
 
             Protocol.PHASE_WAITING_FOR_USER -> {
+                watchCancellable = false
                 setTransfer(100, getString(R.string.transfer_done))
                 setInstall(percent, getString(R.string.confirm_on_watch))
                 // Waiting on a tap on the watch; nothing for the phone to protect meanwhile.
@@ -182,13 +198,23 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
             }
 
             Protocol.PHASE_DONE -> {
+                watchCancellable = false
                 setTransfer(100, getString(R.string.transfer_done))
                 setInstall(100, getString(R.string.install_done))
                 setWatchBusy(false)
             }
 
             Protocol.PHASE_FAILED -> {
+                watchCancellable = false
                 installText.text = getString(R.string.failed)
+                setWatchBusy(false)
+            }
+
+            Protocol.PHASE_CANCELLED -> {
+                watchCancellable = false
+                if (transferProgress.progress < 100) transferText.text = getString(R.string.stopped)
+                installText.text = getString(R.string.stopped)
+                statusText.text = if (userCancelled) "Stopped." else "Stopped on the watch."
                 setWatchBusy(false)
             }
         }
@@ -358,6 +384,8 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         val size = source.size
 
         sending = true
+        userCancelled = false
+        watchCancellable = false
         watchReportsReceive = false
         progressGroup.visibility = View.VISIBLE
         setTransfer(0, getString(R.string.starting))
@@ -372,6 +400,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
             var channel: ChannelClient.Channel? = null
             try {
                 channel = channelClient.openChannel(node.id, Protocol.CHANNEL_PATH).await()
+                currentChannel = channel
                 val output = channelClient.getOutputStream(channel).await()
                 statusText.text = "Sending $name…"
 
@@ -387,6 +416,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
                             var total = 0L
                             var lastPercent = -1
                             while (true) {
+                                ensureActive()
                                 val read = src.read(buffer)
                                 if (read < 0) break
                                 out.write(buffer, 0, read)
@@ -411,12 +441,48 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
                 if (!watchReportsReceive) setTransfer(100, getString(R.string.transfer_done))
                 setWatchBusy(true)
             } catch (e: Exception) {
-                statusText.text = "Transfer failed: ${e.message ?: e.javaClass.simpleName}"
-                transferText.text = getString(R.string.failed)
+                if (userCancelled) {
+                    statusText.text = "Stopped."
+                    transferText.text = getString(R.string.stopped)
+                    installText.text = ""
+                    watchBusy = false
+                    watchCancellable = false
+                } else {
+                    // If the watch stopped it, its PHASE_CANCELLED message replaces this text.
+                    statusText.text = "Transfer failed: ${e.message ?: e.javaClass.simpleName}"
+                    transferText.text = getString(R.string.failed)
+                }
                 channel?.let { runCatching { channelClient.close(it) } }
             } finally {
+                currentChannel = null
                 sending = false
                 updateControls()
+            }
+        }
+    }
+
+    /**
+     * Tells the watch to stop, then cuts the connection if we're still sending. Watch apps older
+     * than 4.0 ignore the message, but closing the channel still stops the transfer.
+     */
+    private fun stopTransfer() {
+        val node = targetNode ?: return
+        userCancelled = true
+        stopButton.isEnabled = false
+        statusText.text = getString(R.string.stopping)
+        lifecycleScope.launch {
+            try {
+                Wearable.getMessageClient(this@MainActivity)
+                    .sendMessage(node.id, Protocol.CANCEL_PATH, ByteArray(0))
+                    .await()
+            } catch (e: Exception) {
+                Log.w(TAG, "Couldn't send cancel to watch", e)
+            }
+            if (sending) {
+                // Give the watch a moment to see the cancel before the channel closes.
+                delay(500)
+                currentChannel?.let { runCatching { Wearable.getChannelClient(this@MainActivity).close(it) } }
+                sendJob?.cancel()
             }
         }
     }
@@ -447,6 +513,9 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
         backBlocker.isEnabled = busy
+        val canStop = sending || (watchBusy && watchCancellable)
+        if (canStop && stopButton.visibility != View.VISIBLE) stopButton.isEnabled = true
+        stopButton.visibility = if (canStop) View.VISIBLE else View.GONE
         pickButton.isEnabled = !busy
         updateWatchButton.isEnabled = !busy && targetNode != null
         findWatchButton.isEnabled = !busy

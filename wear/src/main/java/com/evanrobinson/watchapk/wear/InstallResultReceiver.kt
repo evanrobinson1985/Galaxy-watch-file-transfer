@@ -25,7 +25,7 @@ class InstallResultReceiver : BroadcastReceiver() {
                 }
                 val current = TransferState.status.value as? TransferState.Status.Installing
                 val fraction = current?.fraction ?: 0.8f
-                TransferState.set(TransferState.Status.Installing(name, fraction, waitingForUser = true))
+                TransferState.set(TransferState.Status.Installing(name, fraction, waitingForUser = true, committed = true))
                 PhoneReporter.progress(context, nodeId, Protocol.PHASE_WAITING_FOR_USER, (fraction * 100).toInt())
                 try {
                     // MainActivity is in the foreground, so we're allowed to launch this.

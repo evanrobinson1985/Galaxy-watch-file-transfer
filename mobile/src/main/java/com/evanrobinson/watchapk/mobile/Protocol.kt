@@ -16,6 +16,10 @@ object Protocol {
     const val PHASE_WAITING_FOR_USER = 3
     const val PHASE_DONE = 4
     const val PHASE_FAILED = 5
+    const val PHASE_CANCELLED = 6
+
+    /** Phone asks the watch to stop the current transfer or install (empty payload). */
+    const val CANCEL_PATH = "/cancel"
 
     /** Phone asks the watch app for its version (empty payload)... */
     const val VERSION_REQUEST_PATH = "/watch-version-request"

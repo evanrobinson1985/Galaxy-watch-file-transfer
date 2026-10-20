@@ -62,6 +62,16 @@
                     android:textSize="13sp" />
 
                 <Button
+                    android:id="@+id/stopButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:backgroundTint="@color/stop"
+                    android:text="@string/hold_to_stop"
+                    android:textColor="@android:color/white"
+                    android:visibility="gone" />
+
+                <Button
                     android:id="@+id/primaryButton"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"

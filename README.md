@@ -9,9 +9,20 @@ There are two apps:
 | `mobile` | Phone   | Pick an APK (or share one to it from My Files / Chrome downloads), then send it to the watch. Shows progress and the install result the watch reports. |
 | `wear`   | Watch   | Receives the file, shows a "Tap to install" notification (or the install screen directly if the app is open), and installs it with Android's PackageInstaller. You confirm the install on the watch. |
 
-Supported files: plain `.apk`, and split bundles `.apks` / `.xapk` (a zip of several APKs, installed together). OBB data inside an `.xapk` is ignored.
+Supported files to install: plain `.apk`, and split bundles `.apks` / `.xapk` (a zip of several APKs, installed together). OBB data inside an `.xapk` is ignored. Any other file type is transferred and saved on the watch in Downloads › Watch Transfer (since 5.0).
 
 The transfer runs over the Wearable Data Layer (the same Bluetooth/Wi-Fi link Galaxy Wearable uses), so you don't need to set up Wi-Fi debugging every time you want to install something.
+
+## What's new in 5.0
+
+- **Send any file, not just APKs.** APK install is still the main feature. Choosing an `.apk`, `.apks` or `.xapk` works exactly as before.
+  - **Any other file** (photos, music, videos, documents, …) is saved on the watch in **Downloads › Watch Transfer**. Apps on the watch, like Gallery and the music player, can find it there. The phone shows only the **Transfer** bar for these files, and the watch shows **Saved ✅** with an **Open** button.
+  - **APKs** now have an **Install on the watch** switch. Turn it off to save the APK without installing it.
+  - You can also share any file to **Send to watch** from My Files or the share menu.
+- **Received files on the watch.** The watch app's main screen has a **Received files** button. It lists everything saved in Downloads › Watch Transfer.
+  - **Tap** a file to open it, or to install it if it's an APK.
+  - **Hold** a file to delete it.
+- Saving files needs **watch app 5.0**. If the watch has an older version, the phone asks you to tap **Update watch app** first. APK installs still work with any watch app version.
 
 ## What's new in 4.0
 

@@ -1,12 +1,14 @@
 <resources>
     <string name="app_name">Watch APK Installer</string>
-    <string name="share_label">Install on watch</string>
+    <string name="share_label">Send to watch</string>
     <string name="find_watch">Find watch</string>
-    <string name="pick_apk">Choose APK</string>
+    <string name="pick_apk">Choose file</string>
     <string name="send">Send to watch &amp; install</string>
+    <string name="send_file">Send to watch</string>
+    <string name="install_switch">Install on the watch (off: just save the APK)</string>
     <string name="no_file">No file selected</string>
     <string name="searching">Looking for your watch…</string>
-    <string name="intro">Pick an .apk (or a split .apks / .xapk bundle) and send it to your watch. The watch will ask you to confirm the install.</string>
+    <string name="intro">Pick an .apk (or a split .apks / .xapk bundle) to install it on your watch. Any other file is saved on the watch in Downloads › Watch Transfer.</string>
     <string name="transfer_label">Transfer to watch</string>
     <string name="install_label">Install on watch</string>
     <string name="starting">Starting…</string>

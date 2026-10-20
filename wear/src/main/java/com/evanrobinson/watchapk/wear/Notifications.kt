@@ -18,6 +18,7 @@ object Notifications {
     private const val PROGRESS_CHANNEL_ID = "transfer_progress"
     private const val RECEIVING_ID = 1
     private const val UPDATED_ID = 2
+    private const val SAVED_ID = 3
 
     private var lastReceivingPercent = -1
 
@@ -77,6 +78,26 @@ object Notifications {
             .setAutoCancel(true)
             .build()
         NotificationManagerCompat.from(context).notify(idFor(file), notification)
+    }
+
+    fun showSaved(context: Context, name: String) {
+        if (!canPost(context)) return
+        ensureChannels(context)
+
+        val open = PendingIntent.getActivity(
+            context,
+            SAVED_ID,
+            Intent(context, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("File saved")
+            .setContentText("$name → ${ReceivedFiles.FOLDER_LABEL}")
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .build()
+        NotificationManagerCompat.from(context).notify(SAVED_ID, notification)
     }
 
     fun showUpdated(context: Context, versionName: String) {

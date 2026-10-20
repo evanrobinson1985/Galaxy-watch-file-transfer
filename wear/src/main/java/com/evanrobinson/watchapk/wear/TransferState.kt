@@ -3,6 +3,7 @@ package com.evanrobinson.watchapk.wear
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import android.net.Uri
 import java.io.File
 
 /**
@@ -44,6 +45,9 @@ object TransferState {
         data class Failure(val message: String) : Status
 
         data class Cancelled(val message: String) : Status
+
+        /** A non-APK file was saved to Downloads. */
+        data class Saved(val name: String, val uri: Uri, val mime: String) : Status
     }
 
     private val _status = MutableStateFlow<Status>(Status.Idle)

@@ -23,9 +23,7 @@
             <intent-filter android:label="@string/share_label">
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="application/vnd.android.package-archive" />
-                <data android:mimeType="application/octet-stream" />
-                <data android:mimeType="application/zip" />
+                <data android:mimeType="*/*" />
             </intent-filter>
 
             <!-- "Open with" an APK -->

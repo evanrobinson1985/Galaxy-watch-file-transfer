@@ -41,6 +41,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".FilesActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.DeviceDefault" />
+
         <service
             android:name=".ApkReceiverService"
             android:exported="true">
@@ -49,6 +54,10 @@
                 <data
                     android:host="*"
                     android:pathPrefix="/apk-transfer"
+                    android:scheme="wear" />
+                <data
+                    android:host="*"
+                    android:path="/file-transfer"
                     android:scheme="wear" />
             </intent-filter>
             <intent-filter>

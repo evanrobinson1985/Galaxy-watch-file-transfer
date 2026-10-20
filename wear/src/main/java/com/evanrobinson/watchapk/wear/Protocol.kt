@@ -2,8 +2,14 @@ package com.evanrobinson.watchapk.wear
 
 /** Wire protocol shared by the phone and watch apps. Keep both copies identical. */
 object Protocol {
-    /** ChannelClient path used to stream the APK from phone to watch. */
+    /** ChannelClient path for an APK the watch should install. */
     const val CHANNEL_PATH = "/apk-transfer"
+
+    /** ChannelClient path for any other file, which the watch saves to Downloads (watch app 5.0+). */
+    const val FILE_CHANNEL_PATH = "/file-transfer"
+
+    /** First watch app version that accepts [FILE_CHANNEL_PATH]. */
+    const val MIN_WATCH_VERSION_FOR_FILES = 5
 
     /** MessageClient path the watch uses to send human-readable status text to the phone. */
     const val RESULT_PATH = "/install-result"

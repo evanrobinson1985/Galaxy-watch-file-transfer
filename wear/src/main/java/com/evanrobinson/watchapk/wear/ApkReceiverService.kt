@@ -1,5 +1,6 @@
 package com.evanrobinson.watchapk.wear
 
+import android.net.Uri
 import android.os.PowerManager
 import android.util.Log
 import com.google.android.gms.tasks.Tasks
@@ -26,7 +27,11 @@ class ApkReceiverService : WearableListenerService() {
     }
 
     override fun onChannelOpened(channel: ChannelClient.Channel) {
-        if (channel.path != Protocol.CHANNEL_PATH) return
+        val saveToDownloads = when (channel.path) {
+            Protocol.CHANNEL_PATH -> false
+            Protocol.FILE_CHANNEL_PATH -> true
+            else -> return
+        }
 
         val client = Wearable.getChannelClient(this)
         val nodeId = channel.nodeId
@@ -35,10 +40,20 @@ class ApkReceiverService : WearableListenerService() {
         wakeLock.acquire(10 * 60 * 1000L)
         TransferControl.begin(this, channel)
         try {
-            val file = receive(client, channel)
-            Log.i(TAG, "Received ${file.name} (${file.length()} bytes)")
+            val received = receive(client, channel, saveToDownloads)
             Notifications.cancelReceiving(this)
             PhoneReporter.progress(this, nodeId, Protocol.PHASE_RECEIVING, 100)
+
+            if (received is Received.ToDownloads) {
+                Log.i(TAG, "Saved ${received.name} to Downloads")
+                TransferState.set(TransferState.Status.Saved(received.name, received.uri, received.mime))
+                PhoneReporter.progress(this, nodeId, Protocol.PHASE_DONE, 100)
+                PhoneReporter.send(this, nodeId, "saved ${received.name} to ${ReceivedFiles.FOLDER_LABEL} ✅")
+                if (!MainActivity.isVisible) Notifications.showSaved(this, received.name)
+                return
+            }
+            val file = (received as Received.ToInstall).file
+            Log.i(TAG, "Received ${file.name} (${file.length()} bytes)")
             TransferState.set(TransferState.Status.ReadyToInstall(file, nodeId))
 
             if (MainActivity.isVisible) {
@@ -71,7 +86,12 @@ class ApkReceiverService : WearableListenerService() {
         }
     }
 
-    private fun receive(client: ChannelClient, channel: ChannelClient.Channel): File {
+    private sealed interface Received {
+        data class ToInstall(val file: File) : Received
+        data class ToDownloads(val name: String, val uri: Uri, val mime: String) : Received
+    }
+
+    private fun receive(client: ChannelClient, channel: ChannelClient.Channel, saveToDownloads: Boolean): Received {
         val input = Tasks.await(client.getInputStream(channel))
         DataInputStream(BufferedInputStream(input, BUFFER_SIZE)).use { data ->
             if (data.readInt() != Protocol.MAGIC) throw IOException("Unexpected data from phone")
@@ -85,10 +105,12 @@ class ApkReceiverService : WearableListenerService() {
             TransferState.set(TransferState.Status.Receiving(name, 0, expectedSize))
             PhoneReporter.progress(this, channel.nodeId, Protocol.PHASE_RECEIVING, 0)
 
-            val dir = File(filesDir, INCOMING_DIR).apply { mkdirs() }
-            val file = File(dir, name)
+            // APKs go to private storage for installing; anything else straight into Downloads.
+            val file = if (saveToDownloads) null else File(File(filesDir, INCOMING_DIR).apply { mkdirs() }, name)
+            val uri = if (saveToDownloads) ReceivedFiles.create(this, name) else null
+            var written = 0L
             try {
-                file.outputStream().use { out ->
+                (if (uri != null) ReceivedFiles.openOutput(this, uri) else file!!.outputStream()).use { out ->
                     val buffer = ByteArray(BUFFER_SIZE)
                     var total = 0L
                     var lastPercent = -1
@@ -99,6 +121,7 @@ class ApkReceiverService : WearableListenerService() {
                         if (read < 0) break
                         out.write(buffer, 0, read)
                         total += read
+                        written = total
 
                         val percent = if (expectedSize > 0) (total * 100 / expectedSize).toInt() else -1
                         val changed = if (expectedSize > 0) percent != lastPercent
@@ -114,14 +137,19 @@ class ApkReceiverService : WearableListenerService() {
                         }
                     }
                 }
-                if (expectedSize >= 0 && file.length() != expectedSize) {
-                    throw IOException("Incomplete transfer (${file.length()} of $expectedSize bytes)")
+                if (expectedSize >= 0 && written != expectedSize) {
+                    throw IOException("Incomplete transfer ($written of $expectedSize bytes)")
                 }
             } catch (e: Exception) {
-                file.delete()
+                file?.delete()
+                uri?.let { ReceivedFiles.delete(this, it) }
                 throw e
             }
-            return file
+            if (uri != null) {
+                ReceivedFiles.publish(this, uri)
+                return Received.ToDownloads(name, uri, ReceivedFiles.mimeFor(name))
+            }
+            return Received.ToInstall(file!!)
         }
     }
 

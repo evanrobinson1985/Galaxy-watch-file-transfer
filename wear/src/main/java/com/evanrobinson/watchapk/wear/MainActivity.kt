@@ -48,6 +48,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var primaryButton: Button
     private lateinit var secondaryButton: Button
     private lateinit var stopButton: Button
+    private lateinit var filesButton: Button
 
     private var locked = false
 
@@ -77,6 +78,8 @@ class MainActivity : ComponentActivity() {
         primaryButton = findViewById(R.id.primaryButton)
         secondaryButton = findViewById(R.id.secondaryButton)
         stopButton = findViewById(R.id.stopButton)
+        filesButton = findViewById(R.id.filesButton)
+        filesButton.setOnClickListener { startActivity(Intent(this, FilesActivity::class.java)) }
 
         // Hold, not tap, so a stray touch or gesture can't stop a transfer.
         stopButton.setOnClickListener { Toast.makeText(this, R.string.hold_to_stop_hint, Toast.LENGTH_SHORT).show() }
@@ -199,6 +202,7 @@ class MainActivity : ComponentActivity() {
         setLocked(status.busy)
         primaryButton.visibility = View.GONE
         secondaryButton.visibility = View.GONE
+        filesButton.visibility = if (status is TransferState.Status.Idle) View.VISIBLE else View.GONE
         if (status.cancellable) {
             if (stopButton.visibility != View.VISIBLE) stopButton.isEnabled = true
             stopButton.visibility = View.VISIBLE
@@ -281,6 +285,18 @@ class MainActivity : ComponentActivity() {
                         TransferState.set(TransferState.Status.Idle)
                         startActivity(launch)
                         finish()
+                    }
+                }
+                showButton(secondaryButton, R.string.done) { TransferState.set(TransferState.Status.Idle) }
+            }
+
+            is TransferState.Status.Saved -> {
+                title.text = getString(R.string.saved)
+                showProgress(1f)
+                detail.text = "${status.name}\n${ReceivedFiles.FOLDER_LABEL}"
+                showButton(primaryButton, R.string.open) {
+                    if (!ReceivedFiles.open(this, status.uri, status.mime)) {
+                        Toast.makeText(this, R.string.no_app_to_open, Toast.LENGTH_LONG).show()
                     }
                 }
                 showButton(secondaryButton, R.string.done) { TransferState.set(TransferState.Status.Idle) }

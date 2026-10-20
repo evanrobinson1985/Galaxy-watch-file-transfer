@@ -24,6 +24,7 @@ import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.Node
 import com.google.android.gms.wearable.Wearable
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -49,6 +50,8 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
     private lateinit var updateWatchButton: MaterialButton
     private lateinit var pickButton: MaterialButton
     private lateinit var sendButton: MaterialButton
+    private lateinit var installSwitch: MaterialSwitch
+    private lateinit var installSection: View
     private lateinit var progressGroup: View
     private lateinit var transferProgress: LinearProgressIndicator
     private lateinit var transferText: TextView
@@ -111,6 +114,9 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         updateWatchButton = findViewById(R.id.updateWatchButton)
         pickButton = findViewById(R.id.pickButton)
         sendButton = findViewById(R.id.sendButton)
+        installSwitch = findViewById(R.id.installSwitch)
+        installSection = findViewById(R.id.installSection)
+        installSwitch.setOnCheckedChangeListener { _, _ -> updateSelectionUi() }
         progressGroup = findViewById(R.id.progressGroup)
         transferProgress = findViewById(R.id.transferProgress)
         transferText = findViewById(R.id.transferText)
@@ -263,11 +269,33 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         val sizeText = if (size >= 0) " (${Formatter.formatShortFileSize(this, size)})" else ""
         fileText.text = "$selectedName$sizeText"
 
-        val lower = selectedName.lowercase()
-        statusText.text = if (lower.endsWith(".apk") || lower.endsWith(".apks") || lower.endsWith(".xapk")) {
-            ""
-        } else {
-            "Warning: this doesn't look like an .apk file, the watch may reject it."
+        installSwitch.isChecked = true
+        statusText.text = ""
+        updateSelectionUi()
+    }
+
+    private fun isApk(name: String): Boolean = name.lowercase().let {
+        it.endsWith(".apk") || it.endsWith(".apks") || it.endsWith(".xapk")
+    }
+
+    /** APKs are installed (unless the switch is off); everything else is saved to the watch's Downloads. */
+    private fun installSelected(): Boolean = isApk(selectedName) && installSwitch.isChecked
+
+    /** Saving non-APK files needs watch app 5.0; older ones only understand APK installs. */
+    private fun watchCanSaveFiles(): Boolean = (watchVersionCode ?: 0) >= Protocol.MIN_WATCH_VERSION_FOR_FILES
+
+    private fun updateSelectionUi() {
+        val hasFile = selectedUri != null
+        installSwitch.visibility = if (hasFile && isApk(selectedName)) View.VISIBLE else View.GONE
+        sendButton.text = getString(if (installSelected()) R.string.send else R.string.send_file)
+        if (hasFile && !installSelected() && targetNode != null && !watchCanSaveFiles()) {
+            statusText.text = if (watchVersionCode == null && !watchVersionUnknown) {
+                "Checking the watch app version…"
+            } else {
+                "Saving files needs watch app v5.0 or newer. Tap \"Update watch app\" first."
+            }
+        } else if (statusText.text.startsWith("Saving files needs") || statusText.text.startsWith("Checking the watch")) {
+            statusText.text = ""
         }
         updateControls()
     }
@@ -354,15 +382,20 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         } else {
             getString(R.string.update_watch_app_to, bundledName)
         }
-        updateControls()
+        updateSelectionUi()
     }
 
     /** Something to stream to the watch: a picked file, or the watch app bundled in this app. */
-    private class SendSource(val name: String, val size: Long, val open: () -> InputStream)
+    private class SendSource(
+        val name: String,
+        val size: Long,
+        val install: Boolean,
+        val open: () -> InputStream,
+    )
 
     private fun sendSelectedFile() {
         val uri = selectedUri ?: return
-        sendToWatch(SendSource(selectedName, selectedSize) {
+        sendToWatch(SendSource(selectedName, selectedSize, installSelected()) {
             contentResolver.openInputStream(uri) ?: throw FileNotFoundException("Can't open $uri")
         })
     }
@@ -375,7 +408,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
             -1L
         }
         val name = "WatchApkInstaller-watch-${BuildConfig.WATCH_VERSION_NAME}.apk"
-        sendToWatch(SendSource(name, size) { assets.open(WATCH_APK_ASSET) })
+        sendToWatch(SendSource(name, size, install = true) { assets.open(WATCH_APK_ASSET) })
     }
 
     private fun sendToWatch(source: SendSource) {
@@ -388,6 +421,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         watchCancellable = false
         watchReportsReceive = false
         progressGroup.visibility = View.VISIBLE
+        installSection.visibility = if (source.install) View.VISIBLE else View.GONE
         setTransfer(0, getString(R.string.starting))
         setInstall(0, getString(R.string.waiting))
         updateControls()
@@ -399,7 +433,8 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
             val channelClient = Wearable.getChannelClient(this@MainActivity)
             var channel: ChannelClient.Channel? = null
             try {
-                channel = channelClient.openChannel(node.id, Protocol.CHANNEL_PATH).await()
+                val path = if (source.install) Protocol.CHANNEL_PATH else Protocol.FILE_CHANNEL_PATH
+                channel = channelClient.openChannel(node.id, path).await()
                 currentChannel = channel
                 val output = channelClient.getOutputStream(channel).await()
                 statusText.text = "Sending $name…"
@@ -437,7 +472,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
                     }
                 }
                 // Closing the output stream signals end-of-file; the watch closes the channel.
-                statusText.text = "Sent $name. Installing on your watch…"
+                statusText.text = if (source.install) "Sent $name. Installing on your watch…" else "Sent $name. Saving on your watch…"
                 if (!watchReportsReceive) setTransfer(100, getString(R.string.transfer_done))
                 setWatchBusy(true)
             } catch (e: Exception) {
@@ -519,7 +554,9 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         pickButton.isEnabled = !busy
         updateWatchButton.isEnabled = !busy && targetNode != null
         findWatchButton.isEnabled = !busy
-        sendButton.isEnabled = !busy && selectedUri != null && targetNode != null
+        sendButton.isEnabled = !busy && selectedUri != null && targetNode != null &&
+            (installSelected() || watchCanSaveFiles())
+        installSwitch.isEnabled = !busy
     }
 
     private companion object {

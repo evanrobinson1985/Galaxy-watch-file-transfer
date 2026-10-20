@@ -65,6 +65,15 @@
             android:text="@string/no_file"
             android:textAppearance="?attr/textAppearanceBodyMedium" />
 
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/installSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:checked="true"
+            android:text="@string/install_switch"
+            android:visibility="gone" />
+
         <com.google.android.material.button.MaterialButton
             android:id="@+id/sendButton"
             android:layout_width="match_parent"
@@ -110,33 +119,40 @@
                 app:trackThickness="8dp" />
 
             <LinearLayout
+                android:id="@+id/installSection"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"
-                android:orientation="horizontal">
+                android:orientation="vertical">
 
-                <TextView
-                    android:layout_width="0dp"
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/install_label"
-                    android:textAppearance="?attr/textAppearanceTitleSmall" />
+                    android:orientation="horizontal">
 
-                <TextView
-                    android:id="@+id/installText"
-                    android:layout_width="wrap_content"
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/install_label"
+                        android:textAppearance="?attr/textAppearanceTitleSmall" />
+
+                    <TextView
+                        android:id="@+id/installText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textAppearance="?attr/textAppearanceBodyMedium" />
+                </LinearLayout>
+
+                <com.google.android.material.progressindicator.LinearProgressIndicator
+                    android:id="@+id/installProgress"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:textAppearance="?attr/textAppearanceBodyMedium" />
+                    android:layout_marginTop="6dp"
+                    android:max="100"
+                    app:trackCornerRadius="4dp"
+                    app:trackThickness="8dp" />
             </LinearLayout>
-
-            <com.google.android.material.progressindicator.LinearProgressIndicator
-                android:id="@+id/installProgress"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:max="100"
-                app:trackCornerRadius="4dp"
-                app:trackThickness="8dp" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/stopButton"

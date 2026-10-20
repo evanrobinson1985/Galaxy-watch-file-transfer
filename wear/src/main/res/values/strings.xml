@@ -1,6 +1,6 @@
 <resources>
     <string name="app_name">APK Installer</string>
-    <string name="ready">Ready. Send an APK from the Watch APK Installer app on your phone.</string>
+    <string name="ready">Ready. Send an APK to install, or any file to save, from the Watch APK Installer app on your phone.</string>
     <string name="ready_to_install">Ready to install.</string>
     <string name="receiving">Receiving</string>
     <string name="installing">Installing</string>
@@ -22,4 +22,13 @@
     <string name="hold_to_stop">Hold to stop</string>
     <string name="hold_to_stop_hint">Press and hold to stop</string>
     <string name="stopped">Stopped</string>
+    <string name="saved">Saved ✅</string>
+    <string name="open">Open</string>
+    <string name="received_files">Received files</string>
+    <string name="no_files">No files yet. Files you send from the phone are saved in Downloads › Watch Transfer.</string>
+    <string name="no_app_to_open">No app on this watch can open this file type.</string>
+    <string name="delete_file_title">Delete %1$s?</string>
+    <string name="delete">Delete</string>
+    <string name="cancel">Cancel</string>
+    <string name="files_hint">Tap to open or install. Hold to delete.</string>
 </resources>

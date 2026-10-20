@@ -1,3 +1,5 @@
 <resources>
     <color name="ic_launcher_background">#1E5EFF</color>
+    <color name="progress">#5B8CFF</color>
+    <color name="progress_track">#33FFFFFF</color>
 </resources>

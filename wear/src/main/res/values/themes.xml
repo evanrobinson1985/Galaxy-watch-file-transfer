@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.WatchApk" parent="@android:style/Theme.DeviceDefault">
+        <!-- MainActivity handles swipe-to-dismiss itself so it can turn it off mid-transfer. -->
+        <item name="android:windowSwipeToDismiss">false</item>
+    </style>
+</resources>

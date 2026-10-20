@@ -14,7 +14,7 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.DeviceDefault">
+        android:theme="@style/Theme.WatchApk">
 
         <!-- This app needs the phone app to send it files. -->
         <meta-data
@@ -23,17 +23,23 @@
 
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
 
-        <activity
-            android:name=".InstallActivity"
-            android:exported="false"
-            android:launchMode="singleTop" />
+            <!-- The phone app opens this (RemoteActivityHelper) right before sending a file. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:host="transfer"
+                    android:scheme="watchapk" />
+            </intent-filter>
+        </activity>
 
         <service
             android:name=".ApkReceiverService"

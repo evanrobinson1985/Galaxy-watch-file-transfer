@@ -1,6 +1,5 @@
 package com.evanrobinson.watchapk.wear
 
-import android.content.Intent
 import android.os.PowerManager
 import android.util.Log
 import com.google.android.gms.tasks.Tasks
@@ -14,7 +13,8 @@ import java.io.IOException
 
 /**
  * Receives APK files streamed from the phone app over the Wearable Data Layer.
- * Callbacks run on a background thread, so blocking I/O here is fine.
+ * Callbacks run on a background thread, so blocking I/O here is fine. The transfer
+ * keeps going even if the user leaves the app.
  */
 class ApkReceiverService : WearableListenerService() {
 
@@ -22,24 +22,31 @@ class ApkReceiverService : WearableListenerService() {
         if (channel.path != Protocol.CHANNEL_PATH) return
 
         val client = Wearable.getChannelClient(this)
+        val nodeId = channel.nodeId
         val wakeLock = (getSystemService(POWER_SERVICE) as PowerManager)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "WatchApk:receive")
         wakeLock.acquire(10 * 60 * 1000L)
         try {
             val file = receive(client, channel)
             Log.i(TAG, "Received ${file.name} (${file.length()} bytes)")
+            Notifications.cancelReceiving(this)
+            PhoneReporter.progress(this, nodeId, Protocol.PHASE_RECEIVING, 100)
+            TransferState.set(TransferState.Status.ReadyToInstall(file, nodeId))
 
             if (MainActivity.isVisible) {
-                // The user is looking at the app, so jump straight to the install screen.
-                startActivity(InstallActivity.intent(this, file, channel.nodeId).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                PhoneReporter.send(this, channel.nodeId, "received ${file.name}, confirm the install on your watch.")
+                // MainActivity picks up ReadyToInstall and starts the install itself.
+                PhoneReporter.send(this, nodeId, "received ${file.name}, installing…")
             } else {
-                Notifications.showReadyToInstall(this, file, channel.nodeId)
-                PhoneReporter.send(this, channel.nodeId, "received ${file.name}. Tap the notification on your watch to install.")
+                Notifications.showReadyToInstall(this, file, nodeId)
+                PhoneReporter.send(this, nodeId, "received ${file.name}. Tap the notification on your watch to install.")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Receive failed", e)
-            PhoneReporter.send(this, channel.nodeId, "receive failed: ${e.message ?: e.javaClass.simpleName}")
+            val reason = "Receive failed: ${e.message ?: e.javaClass.simpleName}"
+            Notifications.cancelReceiving(this)
+            TransferState.set(TransferState.Status.Failure(reason))
+            PhoneReporter.progress(this, nodeId, Protocol.PHASE_FAILED, 0)
+            PhoneReporter.send(this, nodeId, reason)
         } finally {
             runCatching { Tasks.await(client.close(channel)) }
             if (wakeLock.isHeld) wakeLock.release()
@@ -57,10 +64,37 @@ class ApkReceiverService : WearableListenerService() {
             val name = sanitizeFileName(data.readUTF())
             val expectedSize = data.readLong()
 
+            TransferState.set(TransferState.Status.Receiving(name, 0, expectedSize))
+            PhoneReporter.progress(this, channel.nodeId, Protocol.PHASE_RECEIVING, 0)
+
             val dir = File(filesDir, INCOMING_DIR).apply { mkdirs() }
             val file = File(dir, name)
             try {
-                file.outputStream().use { data.copyTo(it, BUFFER_SIZE) }
+                file.outputStream().use { out ->
+                    val buffer = ByteArray(BUFFER_SIZE)
+                    var total = 0L
+                    var lastPercent = -1
+                    var lastReportedBytes = 0L
+                    while (true) {
+                        val read = data.read(buffer)
+                        if (read < 0) break
+                        out.write(buffer, 0, read)
+                        total += read
+
+                        val percent = if (expectedSize > 0) (total * 100 / expectedSize).toInt() else -1
+                        val changed = if (expectedSize > 0) percent != lastPercent
+                        else total - lastReportedBytes >= UNKNOWN_SIZE_REPORT_STEP
+                        if (changed) {
+                            lastPercent = percent
+                            lastReportedBytes = total
+                            TransferState.set(TransferState.Status.Receiving(name, total, expectedSize))
+                            if (percent >= 0) {
+                                PhoneReporter.progress(this, channel.nodeId, Protocol.PHASE_RECEIVING, percent)
+                            }
+                            if (!MainActivity.isVisible) Notifications.showReceiving(this, name, percent)
+                        }
+                    }
+                }
                 if (expectedSize >= 0 && file.length() != expectedSize) {
                     throw IOException("Incomplete transfer (${file.length()} of $expectedSize bytes)")
                 }
@@ -83,6 +117,7 @@ class ApkReceiverService : WearableListenerService() {
     companion object {
         private const val TAG = "ApkReceiverService"
         private const val BUFFER_SIZE = 64 * 1024
+        private const val UNKNOWN_SIZE_REPORT_STEP = 512 * 1024L
         const val INCOMING_DIR = "incoming"
     }
 }

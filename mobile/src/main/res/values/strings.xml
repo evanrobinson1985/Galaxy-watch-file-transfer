@@ -7,4 +7,13 @@
     <string name="no_file">No file selected</string>
     <string name="searching">Looking for your watch…</string>
     <string name="intro">Pick an .apk (or a split .apks / .xapk bundle) and send it to your watch. The watch will ask you to confirm the install.</string>
+    <string name="transfer_label">Transfer to watch</string>
+    <string name="install_label">Install on watch</string>
+    <string name="starting">Starting…</string>
+    <string name="waiting">Waiting…</string>
+    <string name="transfer_done">Done ✅</string>
+    <string name="install_done">Installed ✅</string>
+    <string name="confirm_on_watch">Confirm on watch</string>
+    <string name="failed">Failed</string>
+    <string name="busy_toast">Transfer in progress, please wait</string>
 </resources>

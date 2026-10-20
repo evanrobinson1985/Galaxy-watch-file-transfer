@@ -13,6 +13,29 @@ Supported files: plain `.apk`, and split bundles `.apks` / `.xapk` (a zip of sev
 
 The transfer runs over the Wearable Data Layer (the same Bluetooth/Wi-Fi link Galaxy Wearable uses), so you don't need to set up Wi-Fi debugging every time you want to install something.
 
+## What's new in 2.0
+
+- **Progress bars.** The watch shows a ring around the edge of the screen with a percentage while it receives and while it installs. The phone shows two bars, **Transfer to watch** and **Install on watch**, using progress reported by the watch.
+- **Screen stays awake** on both the phone and the watch while a transfer or install is running.
+- **Accidental exits are blocked while busy.**
+  - On the watch, the app ignores swipe-to-dismiss, the back button, wrist gestures, rotary/bezel input and screen touches until the transfer and install finish.
+  - On the phone, the back gesture is blocked while sending, and rotating the phone no longer interrupts a transfer.
+  - The **home button** (watch) and home gesture (phone) still work, because Android doesn't let apps block them. Even then, the transfer keeps running in the background on the watch, and a notification shows its progress.
+- **The watch app opens by itself** when you tap Send on the phone, so you can watch the progress.
+
+### Updating from 1.0
+
+Version 2.0 uses the same package name and signing key, so it installs over 1.0 and keeps the install permission you granted. Update **both** apps.
+
+From Android Studio's terminal, in this project, with the watch connected over wireless debugging:
+```powershell
+$env:ANDROID_SERIAL="<watch-ip>:<port>"
+.\gradlew :wear:installDebug
+Remove-Item Env:ANDROID_SERIAL   # then plug in the phone
+.\gradlew :mobile:installDebug
+```
+Or install the new APKs from the latest GitHub Actions build (see below).
+
 ## Getting the APKs
 
 Every push builds both apps with GitHub Actions:
@@ -56,7 +79,7 @@ You can turn wireless debugging off afterwards. Everything from here on runs ove
 1. On the phone, open **Watch APK Installer**. It should show your watch's name with a ✅.
 2. Tap **Choose APK** and pick the file. You can also share an APK to **Install on watch** from My Files.
 3. Tap **Send to watch & install**.
-4. On the watch, tap the **Tap to install** notification. If the watch app is already open, the install screen appears by itself. Then confirm the install.
+4. The watch app opens and shows the transfer progress, then starts installing by itself. Confirm the install when the watch asks. If the watch app didn't come to the front, tap the **Tap to install** notification instead.
 5. The phone shows the result, e.g. `Watch: installed com.example.app ✅`.
 
 ## Troubleshooting

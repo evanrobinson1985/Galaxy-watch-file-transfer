@@ -1,39 +1,80 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.wear.widget.SwipeDismissFrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/swipeRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fillViewport="true">
+    android:background="@android:color/black">
 
-    <LinearLayout
+    <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center"
-        android:orientation="vertical"
-        android:paddingHorizontal="@dimen/round_inset_h"
-        android:paddingVertical="@dimen/round_inset_v">
+        android:layout_height="match_parent">
 
-        <TextView
-            android:id="@+id/statusText"
+        <!-- Progress ring around the edge of the round display. -->
+        <ProgressBar
+            android:id="@+id/ring"
+            style="?android:attr/progressBarStyleHorizontal"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center"
-            android:text="@string/ready"
-            android:textSize="14sp" />
-
-        <Button
-            android:id="@+id/installPermButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="@string/allow_installs"
+            android:layout_height="match_parent"
+            android:indeterminate="false"
+            android:max="1000"
+            android:maxHeight="1000dp"
+            android:progressDrawable="@drawable/progress_ring"
             android:visibility="gone" />
 
-        <Button
-            android:id="@+id/notifPermButton"
+        <ScrollView
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="@string/allow_notifications"
-            android:visibility="gone" />
-    </LinearLayout>
-</ScrollView>
+            android:layout_height="match_parent"
+            android:fillViewport="true">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:paddingHorizontal="@dimen/round_inset_h"
+                android:paddingVertical="@dimen/round_inset_v">
+
+                <TextView
+                    android:id="@+id/title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:text="@string/app_name"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/percent"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:textColor="@color/progress"
+                    android:textSize="34sp"
+                    android:textStyle="bold"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/detail"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:gravity="center"
+                    android:textSize="13sp" />
+
+                <Button
+                    android:id="@+id/primaryButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:visibility="gone" />
+
+                <Button
+                    android:id="@+id/secondaryButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </ScrollView>
+    </FrameLayout>
+</androidx.wear.widget.SwipeDismissFrameLayout>

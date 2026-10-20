@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.util.Log
-import android.widget.Toast
 import androidx.core.content.IntentCompat
 import java.io.File
 
@@ -15,6 +14,7 @@ class InstallResultReceiver : BroadcastReceiver() {
         val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
         val nodeId = intent.getStringExtra(EXTRA_NODE_ID)
         val file = intent.getStringExtra(EXTRA_FILE_PATH)?.let(::File)
+        val name = file?.name ?: "app"
 
         when (status) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
@@ -23,8 +23,12 @@ class InstallResultReceiver : BroadcastReceiver() {
                     fail(context, nodeId, file, "Installer didn't provide a confirmation screen")
                     return
                 }
+                val current = TransferState.status.value as? TransferState.Status.Installing
+                val fraction = current?.fraction ?: 0.8f
+                TransferState.set(TransferState.Status.Installing(name, fraction, waitingForUser = true))
+                PhoneReporter.progress(context, nodeId, Protocol.PHASE_WAITING_FOR_USER, (fraction * 100).toInt())
                 try {
-                    // InstallActivity is in the foreground, so we're allowed to launch this.
+                    // MainActivity is in the foreground, so we're allowed to launch this.
                     context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 } catch (e: Exception) {
                     fail(context, nodeId, file, "Couldn't show install confirmation: ${e.message}")
@@ -34,9 +38,9 @@ class InstallResultReceiver : BroadcastReceiver() {
             PackageInstaller.STATUS_SUCCESS -> {
                 val pkg = intent.getStringExtra(PackageInstaller.EXTRA_PACKAGE_NAME)
                 file?.delete()
-                InstallEvents.post(InstallEvents.State.Success(pkg))
-                Toast.makeText(context, "Installed", Toast.LENGTH_SHORT).show()
-                PhoneReporter.send(context, nodeId, "installed ${pkg ?: file?.name ?: "app"} ✅")
+                TransferState.set(TransferState.Status.Success(name, pkg))
+                PhoneReporter.progress(context, nodeId, Protocol.PHASE_DONE, 100)
+                PhoneReporter.send(context, nodeId, "installed ${pkg ?: name} ✅")
             }
 
             else -> {
@@ -49,7 +53,8 @@ class InstallResultReceiver : BroadcastReceiver() {
     private fun fail(context: Context, nodeId: String?, file: File?, reason: String) {
         Log.w(TAG, "Install failed: $reason")
         file?.delete()
-        InstallEvents.post(InstallEvents.State.Failure(reason))
+        TransferState.set(TransferState.Status.Failure(reason))
+        PhoneReporter.progress(context, nodeId, Protocol.PHASE_FAILED, 0)
         PhoneReporter.send(context, nodeId, "install failed: $reason")
     }
 

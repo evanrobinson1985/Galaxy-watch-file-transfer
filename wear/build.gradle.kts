@@ -13,8 +13,8 @@ android {
         applicationId = "com.evanrobinson.watchapk"
         minSdk = 30
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "2.0"
     }
 
     signingConfigs {
@@ -45,6 +45,7 @@ android {
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.activity:activity-ktx:1.9.3")
+    implementation("androidx.wear:wear:1.3.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("com.google.android.gms:play-services-wearable:19.0.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")

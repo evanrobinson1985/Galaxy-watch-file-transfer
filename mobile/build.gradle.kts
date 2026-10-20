@@ -3,6 +3,34 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+/** Copies the built watch app into the phone app's assets so the phone can update the watch. */
+abstract class CopyWatchApkTask : DefaultTask() {
+    @get:InputFile
+    abstract val watchApk: RegularFileProperty
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun copy() {
+        val out = outputDir.get().asFile
+        out.deleteRecursively()
+        out.mkdirs()
+        watchApk.get().asFile.copyTo(File(out, "watch-app.apk"), overwrite = true)
+    }
+}
+
+val copyWatchApk = tasks.register<CopyWatchApkTask>("copyWatchApk") {
+    dependsOn(":wear:assembleDebug")
+    watchApk.set(rootProject.layout.projectDirectory.file("wear/build/outputs/apk/debug/wear-debug.apk"))
+}
+
+androidComponents {
+    onVariants { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(copyWatchApk, CopyWatchApkTask::outputDir)
+    }
+}
+
 android {
     namespace = "com.evanrobinson.watchapk.mobile"
     compileSdk = 35
@@ -13,8 +41,20 @@ android {
         applicationId = "com.evanrobinson.watchapk"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "2.0"
+        versionCode = (property("appVersionCode") as String).toInt()
+        versionName = property("appVersionName") as String
+
+        buildConfigField("int", "WATCH_VERSION_CODE", property("appVersionCode") as String)
+        buildConfigField("String", "WATCH_VERSION_NAME", "\"${property("appVersionName")}\"")
+    }
+
+    buildFeatures {
+        buildConfig = true
+    }
+
+    androidResources {
+        // Store the bundled watch APK uncompressed so its size can be read directly.
+        noCompress += "apk"
     }
 
     signingConfigs {

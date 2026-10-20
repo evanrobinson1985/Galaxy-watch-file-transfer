@@ -16,4 +16,7 @@
     <string name="confirm_on_watch">Confirm on watch</string>
     <string name="failed">Failed</string>
     <string name="busy_toast">Transfer in progress, please wait</string>
+    <string name="update_watch_app">Update watch app</string>
+    <string name="update_watch_app_to">Update watch app to v%1$s</string>
+    <string name="reinstall_watch_app">Reinstall watch app (v%1$s)</string>
 </resources>

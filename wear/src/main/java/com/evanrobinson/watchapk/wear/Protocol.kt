@@ -17,6 +17,12 @@ object Protocol {
     const val PHASE_DONE = 4
     const val PHASE_FAILED = 5
 
+    /** Phone asks the watch app for its version (empty payload)... */
+    const val VERSION_REQUEST_PATH = "/watch-version-request"
+
+    /** ...and the watch answers with "versionCode|versionName" (UTF-8). Also sent after an update. */
+    const val VERSION_PATH = "/watch-version"
+
     /** Deep link the phone uses (via RemoteActivityHelper) to bring the watch app on screen. */
     const val OPEN_WATCH_APP_URI = "watchapk://transfer"
 

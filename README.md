@@ -13,6 +13,11 @@ Supported files: plain `.apk`, and split bundles `.apks` / `.xapk` (a zip of sev
 
 The transfer runs over the Wearable Data Layer (the same Bluetooth/Wi-Fi link Galaxy Wearable uses), so you don't need to set up Wi-Fi debugging every time you want to install something.
 
+## What's new in 3.0
+
+- **Update the watch app from the phone (over the air).** The phone app carries a copy of the matching watch app. Under **Find watch**, it shows the watch app's version and an **Update watch app** button. Tap it and the phone sends the watch app to the watch, which installs it over itself. Confirm on the watch if it asks. The watch app closes during the update, then tells the phone it's on the new version.
+- This works for watches still on 1.0 or 2.0. Those versions can't report their version number, so the phone shows "older than v3.0". **From now on you only need adb if you uninstall the watch app.** To update both apps, install the new phone app, then tap **Update watch app**.
+
 ## What's new in 2.0
 
 - **Progress bars.** The watch shows a ring around the edge of the screen with a percentage while it receives and while it installs. The phone shows two bars, **Transfer to watch** and **Install on watch**, using progress reported by the watch.
@@ -23,7 +28,7 @@ The transfer runs over the Wearable Data Layer (the same Bluetooth/Wi-Fi link Ga
   - The **home button** (watch) and home gesture (phone) still work, because Android doesn't let apps block them. Even then, the transfer keeps running in the background on the watch, and a notification shows its progress.
 - **The watch app opens by itself** when you tap Send on the phone, so you can watch the progress.
 
-### Updating from 1.0
+### Updating from 1.0 (manual, before 3.0)
 
 Version 2.0 uses the same package name and signing key, so it installs over 1.0 and keeps the install permission you granted. Update **both** apps.
 

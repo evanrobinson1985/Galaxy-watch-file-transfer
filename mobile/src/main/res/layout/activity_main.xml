@@ -33,6 +33,22 @@
             android:layout_marginTop="8dp"
             android:text="@string/find_watch" />
 
+        <TextView
+            android:id="@+id/watchAppText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/updateWatchButton"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:enabled="false"
+            android:text="@string/update_watch_app" />
+
         <com.google.android.material.button.MaterialButton
             android:id="@+id/pickButton"
             style="@style/Widget.Material3.Button.TonalButton"

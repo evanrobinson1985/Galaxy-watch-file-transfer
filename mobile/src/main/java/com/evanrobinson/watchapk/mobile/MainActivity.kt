@@ -35,6 +35,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.io.BufferedOutputStream
 import java.io.DataOutputStream
 import java.io.FileNotFoundException
+import java.io.IOException
+import java.io.InputStream
 
 class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListener {
 
@@ -42,6 +44,8 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
     private lateinit var fileText: TextView
     private lateinit var statusText: TextView
     private lateinit var findWatchButton: MaterialButton
+    private lateinit var watchAppText: TextView
+    private lateinit var updateWatchButton: MaterialButton
     private lateinit var pickButton: MaterialButton
     private lateinit var sendButton: MaterialButton
     private lateinit var progressGroup: View
@@ -55,6 +59,13 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
     private var selectedSize: Long = -1
     private var targetNode: Node? = null
     private var sendJob: Job? = null
+
+    /** Version of the watch app as reported by the watch; null until it answers. */
+    private var watchVersionCode: Int? = null
+    private var watchVersionName: String? = null
+
+    /** True when the watch didn't answer the version request (watch app 2.0 or older). */
+    private var watchVersionUnknown = false
 
     /** True while we are streaming the file. */
     private var sending = false
@@ -86,6 +97,8 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         fileText = findViewById(R.id.fileText)
         statusText = findViewById(R.id.statusText)
         findWatchButton = findViewById(R.id.findWatchButton)
+        watchAppText = findViewById(R.id.watchAppText)
+        updateWatchButton = findViewById(R.id.updateWatchButton)
         pickButton = findViewById(R.id.pickButton)
         sendButton = findViewById(R.id.sendButton)
         progressGroup = findViewById(R.id.progressGroup)
@@ -98,7 +111,8 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         findWatchButton.setOnClickListener { findWatch() }
         // APK bundles often come through with generic MIME types, so accept anything.
         pickButton.setOnClickListener { pickApk.launch(arrayOf("*/*")) }
-        sendButton.setOnClickListener { sendToWatch() }
+        sendButton.setOnClickListener { sendSelectedFile() }
+        updateWatchButton.setOnClickListener { sendWatchAppUpdate() }
 
         // Listen for the whole lifetime of the screen so progress isn't missed while paused.
         Wearable.getMessageClient(this).addListener(this)
@@ -123,6 +137,17 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
             Protocol.RESULT_PATH -> {
                 val text = String(event.data, Charsets.UTF_8)
                 runOnUiThread { statusText.text = "Watch: $text" }
+            }
+
+            Protocol.VERSION_PATH -> {
+                val parts = String(event.data, Charsets.UTF_8).split('|', limit = 2)
+                val code = parts.getOrNull(0)?.toIntOrNull() ?: return
+                runOnUiThread {
+                    watchVersionCode = code
+                    watchVersionName = parts.getOrNull(1)
+                    watchVersionUnknown = false
+                    renderWatchApp()
+                }
             }
 
             Protocol.PROGRESS_PATH -> {
@@ -231,6 +256,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
                     .nodes
                 val node = capable.firstOrNull { it.isNearby } ?: capable.firstOrNull()
                 targetNode = node
+                if (node != null) requestWatchVersion(node)
                 watchStatus.text = if (node != null) {
                     "Watch: ${node.displayName} ✅"
                 } else {
@@ -246,7 +272,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
                 targetNode = null
                 watchStatus.text = "Couldn't reach the Wearable API: ${e.message}"
             }
-            updateControls()
+            renderWatchApp()
         }
     }
 
@@ -263,11 +289,73 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         }
     }
 
-    private fun sendToWatch() {
+    private fun requestWatchVersion(node: Node) {
+        watchVersionCode = null
+        watchVersionName = null
+        watchVersionUnknown = false
+        renderWatchApp()
+        lifecycleScope.launch {
+            try {
+                Wearable.getMessageClient(this@MainActivity)
+                    .sendMessage(node.id, Protocol.VERSION_REQUEST_PATH, ByteArray(0))
+                    .await()
+            } catch (e: Exception) {
+                Log.w(TAG, "Version request failed", e)
+            }
+            // Watch apps before 3.0 don't answer.
+            delay(VERSION_REPLY_TIMEOUT_MS)
+            if (watchVersionCode == null) {
+                watchVersionUnknown = true
+                renderWatchApp()
+            }
+        }
+    }
+
+    private fun renderWatchApp() {
+        val bundledCode = BuildConfig.WATCH_VERSION_CODE
+        val bundledName = BuildConfig.WATCH_VERSION_NAME
+        val code = watchVersionCode
+        watchAppText.text = when {
+            targetNode == null -> ""
+            code != null && code < bundledCode -> "Watch app: v$watchVersionName. Update available: v$bundledName"
+            code != null && code == bundledCode -> "Watch app: v$watchVersionName (up to date)"
+            code != null -> "Watch app: v$watchVersionName (newer than this phone app)"
+            watchVersionUnknown -> "Watch app: older than v$bundledName. Update available: v$bundledName"
+            else -> "Watch app: checking version…"
+        }
+        updateWatchButton.text = if (code != null && code >= bundledCode) {
+            getString(R.string.reinstall_watch_app, bundledName)
+        } else {
+            getString(R.string.update_watch_app_to, bundledName)
+        }
+        updateControls()
+    }
+
+    /** Something to stream to the watch: a picked file, or the watch app bundled in this app. */
+    private class SendSource(val name: String, val size: Long, val open: () -> InputStream)
+
+    private fun sendSelectedFile() {
         val uri = selectedUri ?: return
+        sendToWatch(SendSource(selectedName, selectedSize) {
+            contentResolver.openInputStream(uri) ?: throw FileNotFoundException("Can't open $uri")
+        })
+    }
+
+    /** Pushes the watch app bundled in this phone app to the watch, which installs it over itself. */
+    private fun sendWatchAppUpdate() {
+        val size = try {
+            assets.openFd(WATCH_APK_ASSET).use { it.length }
+        } catch (e: IOException) {
+            -1L
+        }
+        val name = "WatchApkInstaller-watch-${BuildConfig.WATCH_VERSION_NAME}.apk"
+        sendToWatch(SendSource(name, size) { assets.open(WATCH_APK_ASSET) })
+    }
+
+    private fun sendToWatch(source: SendSource) {
         val node = targetNode ?: return
-        val name = selectedName
-        val size = selectedSize
+        val name = source.name
+        val size = source.size
 
         sending = true
         watchReportsReceive = false
@@ -288,9 +376,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
                 statusText.text = "Sending $name…"
 
                 withContext(Dispatchers.IO) {
-                    val input = contentResolver.openInputStream(uri)
-                        ?: throw FileNotFoundException("Can't open $uri")
-                    input.use { src ->
+                    source.open().use { src ->
                         DataOutputStream(BufferedOutputStream(output, BUFFER_SIZE)).use { out ->
                             out.writeInt(Protocol.MAGIC)
                             out.writeInt(Protocol.VERSION)
@@ -362,6 +448,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         }
         backBlocker.isEnabled = busy
         pickButton.isEnabled = !busy
+        updateWatchButton.isEnabled = !busy && targetNode != null
         findWatchButton.isEnabled = !busy
         sendButton.isEnabled = !busy && selectedUri != null && targetNode != null
     }
@@ -370,5 +457,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         const val TAG = "WatchApkInstaller"
         const val BUFFER_SIZE = 64 * 1024
         const val WATCH_SILENCE_TIMEOUT_MS = 120_000L
+        const val VERSION_REPLY_TIMEOUT_MS = 4_000L
+        const val WATCH_APK_ASSET = "watch-app.apk"
     }
 }

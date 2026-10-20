@@ -13,8 +13,12 @@ android {
         applicationId = "com.evanrobinson.watchapk"
         minSdk = 30
         targetSdk = 35
-        versionCode = 2
-        versionName = "2.0"
+        versionCode = (property("appVersionCode") as String).toInt()
+        versionName = property("appVersionName") as String
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     signingConfigs {

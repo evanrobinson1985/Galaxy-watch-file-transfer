@@ -4,6 +4,7 @@ import android.os.PowerManager
 import android.util.Log
 import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.wearable.ChannelClient
+import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.Wearable
 import com.google.android.gms.wearable.WearableListenerService
 import java.io.BufferedInputStream
@@ -17,6 +18,12 @@ import java.io.IOException
  * keeps going even if the user leaves the app.
  */
 class ApkReceiverService : WearableListenerService() {
+
+    override fun onMessageReceived(event: MessageEvent) {
+        if (event.path == Protocol.VERSION_REQUEST_PATH) {
+            PhoneReporter.sendVersion(this, event.sourceNodeId)
+        }
+    }
 
     override fun onChannelOpened(channel: ChannelClient.Channel) {
         if (channel.path != Protocol.CHANNEL_PATH) return

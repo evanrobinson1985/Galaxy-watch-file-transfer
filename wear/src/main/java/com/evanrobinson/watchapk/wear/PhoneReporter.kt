@@ -2,7 +2,9 @@ package com.evanrobinson.watchapk.wear
 
 import android.content.Context
 import android.util.Log
+import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.wearable.Wearable
+import java.util.concurrent.TimeUnit
 
 /** Sends status text and progress updates back to the phone app (best effort). */
 object PhoneReporter {
@@ -24,6 +26,29 @@ object PhoneReporter {
         lastPhase = phase
         lastPercent = pct
         sendRaw(context, nodeId, Protocol.PROGRESS_PATH, byteArrayOf(phase.toByte(), pct.toByte()))
+    }
+
+    fun sendVersion(context: Context, nodeId: String?) {
+        val payload = "${BuildConfig.VERSION_CODE}|${BuildConfig.VERSION_NAME}"
+        sendRaw(context, nodeId, Protocol.VERSION_PATH, payload.toByteArray(Charsets.UTF_8))
+    }
+
+    /**
+     * Tells every connected phone that this app was just updated. Blocking; we don't know
+     * which phone sent the update because the old process was killed during the install.
+     */
+    fun announceUpdate(context: Context) {
+        val nodes = try {
+            Tasks.await(Wearable.getNodeClient(context.applicationContext).connectedNodes, 5, TimeUnit.SECONDS)
+        } catch (e: Exception) {
+            Log.w(TAG, "Couldn't list connected nodes", e)
+            return
+        }
+        for (node in nodes) {
+            progress(context, node.id, Protocol.PHASE_DONE, 100)
+            send(context, node.id, "watch app updated to v${BuildConfig.VERSION_NAME} ✅")
+            sendVersion(context, node.id)
+        }
     }
 
     private fun sendRaw(context: Context, nodeId: String?, path: String, data: ByteArray) {

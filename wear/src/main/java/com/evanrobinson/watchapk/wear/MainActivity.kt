@@ -184,7 +184,7 @@ class MainActivity : ComponentActivity() {
             TransferState.Status.Idle -> {
                 title.text = getString(R.string.app_name)
                 if (ApkInstaller.canInstall(this)) {
-                    detail.text = getString(R.string.ready)
+                    detail.text = getString(R.string.ready) + "\n\nv${BuildConfig.VERSION_NAME}"
                 } else {
                     detail.text = getString(R.string.install_permission_missing)
                     showButton(primaryButton, R.string.allow_installs) { openInstallSettings() }

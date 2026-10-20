@@ -17,6 +17,7 @@ object Notifications {
     private const val CHANNEL_ID = "incoming_apks"
     private const val PROGRESS_CHANNEL_ID = "transfer_progress"
     private const val RECEIVING_ID = 1
+    private const val UPDATED_ID = 2
 
     private var lastReceivingPercent = -1
 
@@ -76,6 +77,26 @@ object Notifications {
             .setAutoCancel(true)
             .build()
         NotificationManagerCompat.from(context).notify(idFor(file), notification)
+    }
+
+    fun showUpdated(context: Context, versionName: String) {
+        if (!canPost(context)) return
+        ensureChannels(context)
+
+        val open = PendingIntent.getActivity(
+            context,
+            UPDATED_ID,
+            Intent(context, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(context.getString(R.string.app_name) + " updated")
+            .setContentText("Now on v$versionName")
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .build()
+        NotificationManagerCompat.from(context).notify(UPDATED_ID, notification)
     }
 
     fun cancel(context: Context, file: File) {

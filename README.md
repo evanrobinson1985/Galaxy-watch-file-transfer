@@ -13,6 +13,20 @@ Supported files to install: plain `.apk`, and split bundles `.apks` / `.xapk` (a
 
 The transfer runs over the Wearable Data Layer (the same Bluetooth/Wi-Fi link Galaxy Wearable uses), so you don't need to set up Wi-Fi debugging every time you want to install something.
 
+## What's new in 6.0
+
+- **Fast Wi‑Fi transfers for big files.** After you pick a file, choose a **Transfer method**:
+  - **Bluetooth** is the original method. It works anywhere the watch is connected, but it's slow: roughly 0.1–0.3 MB/s, so a 700 MB video takes over an hour.
+  - **Wi‑Fi (fast)** has the watch download the file straight from the phone over your local network. Expect a few MB/s or more, so that 700 MB video takes a few minutes. It's picked automatically for files over 10 MB.
+- **How Wi‑Fi mode works:** the phone starts a temporary server that only accepts this one transfer. Over Bluetooth, it tells the watch where to connect and passes it a one-time key. The watch turns on its Wi‑Fi, connects to the phone and downloads the file. The data is encrypted (AES) and checked for damage (HMAC), and the server shuts down when the transfer ends.
+- **Requirements for Wi‑Fi:**
+  - The phone and watch must be on the **same Wi‑Fi network**. If there's no Wi‑Fi around, turn on the phone's **hotspot** and connect the watch to it once.
+  - The watch's Wi‑Fi must be on, or set to automatic.
+  - **Watch app 6.0**. Tap **Update watch app** first.
+- **Automatic fallback:** if the watch can't join Wi‑Fi or can't reach the phone, the phone says why and **sends over Bluetooth instead**.
+- **Speed and time left** are shown on both the phone and the watch.
+- The watch now **checks for free space** before receiving, so a big file fails right away instead of halfway through. The watch also stays awake through long Bluetooth transfers (previously the wake lock ran out after 10 minutes).
+
 ## What's new in 5.0
 
 - **Send any file, not just APKs.** APK install is still the main feature. Choosing an `.apk`, `.apks` or `.xapk` works exactly as before.

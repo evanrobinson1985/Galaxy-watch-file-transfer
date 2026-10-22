@@ -1,7 +1,6 @@
 package com.evanrobinson.watchapk.wear
 
 import android.content.Context
-import com.google.android.gms.wearable.ChannelClient
 import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.Wearable
 import java.io.IOException
@@ -23,15 +22,16 @@ object TransferControl {
 
     val isCancelled: Boolean get() = cancelledBy != null
 
+    /** Unblocks whatever the running job is waiting on (closes its channel or socket). */
     @Volatile
-    private var channel: ChannelClient.Channel? = null
+    private var onCancel: (() -> Unit)? = null
     private var appContext: Context? = null
     private var listener: MessageClient.OnMessageReceivedListener? = null
 
     @Synchronized
-    fun begin(context: Context, channel: ChannelClient.Channel?) {
+    fun begin(context: Context, onCancel: (() -> Unit)?) {
         cancelledBy = null
-        this.channel = channel
+        this.onCancel = onCancel
         val app = context.applicationContext
         appContext = app
         if (listener == null) {
@@ -47,7 +47,7 @@ object TransferControl {
 
     @Synchronized
     fun end() {
-        channel = null
+        onCancel = null
         val app = appContext ?: return
         listener?.let { Wearable.getMessageClient(app).removeListener(it) }
         listener = null
@@ -57,10 +57,7 @@ object TransferControl {
     fun requestCancel(by: String): Boolean {
         if (!TransferState.status.value.cancellable || cancelledBy != null) return false
         cancelledBy = by
-        // Closing the channel unblocks a read that is waiting for data.
-        val app = appContext
-        val ch = channel
-        if (app != null && ch != null) Wearable.getChannelClient(app).close(ch)
+        onCancel?.let { runCatching(it) }
         return true
     }
 

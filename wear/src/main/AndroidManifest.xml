@@ -8,6 +8,12 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- Fast transfers: bring up Wi-Fi and download the file from the phone. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
@@ -65,6 +71,10 @@
                 <data
                     android:host="*"
                     android:path="/watch-version-request"
+                    android:scheme="wear" />
+                <data
+                    android:host="*"
+                    android:path="/wifi-offer"
                     android:scheme="wear" />
             </intent-filter>
         </service>

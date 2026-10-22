@@ -11,6 +11,15 @@ object Protocol {
     /** First watch app version that accepts [FILE_CHANNEL_PATH]. */
     const val MIN_WATCH_VERSION_FOR_FILES = 5
 
+    /**
+     * Fast transfer over Wi-Fi (watch app 6.0+). The phone runs a one-shot TCP server on the
+     * local network and sends this message (JSON, see WifiOffer) over Bluetooth. The watch
+     * joins Wi-Fi, connects, sends the token, and then reads `size` bytes of AES-CTR
+     * ciphertext followed by a 32-byte HMAC-SHA256 of that ciphertext.
+     */
+    const val WIFI_OFFER_PATH = "/wifi-offer"
+    const val MIN_WATCH_VERSION_FOR_WIFI = 6
+
     /** MessageClient path the watch uses to send human-readable status text to the phone. */
     const val RESULT_PATH = "/install-result"
 

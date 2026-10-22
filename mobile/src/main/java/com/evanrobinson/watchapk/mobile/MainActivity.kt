@@ -3,6 +3,7 @@ package com.evanrobinson.watchapk.mobile
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.text.format.Formatter
 import android.util.Log
@@ -24,6 +25,7 @@ import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.Node
 import com.google.android.gms.wearable.Wearable
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import kotlinx.coroutines.Dispatchers
@@ -52,6 +54,11 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
     private lateinit var sendButton: MaterialButton
     private lateinit var installSwitch: MaterialSwitch
     private lateinit var installSection: View
+    private lateinit var methodLabel: View
+    private lateinit var methodGroup: MaterialButtonToggleGroup
+    private lateinit var methodBluetooth: MaterialButton
+    private lateinit var methodWifi: MaterialButton
+    private lateinit var methodHint: TextView
     private lateinit var progressGroup: View
     private lateinit var transferProgress: LinearProgressIndicator
     private lateinit var transferText: TextView
@@ -86,6 +93,24 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
     private var userCancelled = false
 
     private var currentChannel: ChannelClient.Channel? = null
+    private var currentWifiServer: WifiSendServer? = null
+
+    /** Waiting for the watch to join Wi-Fi and connect; its failure reports go to [wifiFailureReason]. */
+    private var wifiConnecting = false
+    private var wifiFailureReason = ""
+    private var wifiWatchFailed = false
+
+    /** We cancelled the watch's Wi-Fi attempt ourselves to fall back; don't show it as "Stopped". */
+    private var suppressNextWatchCancel = false
+    private var suppressCancelText = false
+
+    /** The user picked a method for the current file, so don't change it automatically. */
+    private var methodChosenByUser = false
+    private var settingMethod = false
+
+    /** For the speed / time-left readout. */
+    private var transferStartedAt = 0L
+    private var transferSize = -1L
 
     /** Once the watch reports receive progress, its numbers drive the transfer bar. */
     private var watchReportsReceive = false
@@ -117,6 +142,15 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         installSwitch = findViewById(R.id.installSwitch)
         installSection = findViewById(R.id.installSection)
         installSwitch.setOnCheckedChangeListener { _, _ -> updateSelectionUi() }
+        methodLabel = findViewById(R.id.methodLabel)
+        methodGroup = findViewById(R.id.methodGroup)
+        methodBluetooth = findViewById(R.id.methodBluetooth)
+        methodWifi = findViewById(R.id.methodWifi)
+        methodHint = findViewById(R.id.methodHint)
+        methodGroup.addOnButtonCheckedListener { _, _, isChecked ->
+            if (isChecked && !settingMethod) methodChosenByUser = true
+            if (isChecked) updateSelectionUi()
+        }
         progressGroup = findViewById(R.id.progressGroup)
         transferProgress = findViewById(R.id.transferProgress)
         transferText = findViewById(R.id.transferText)
@@ -154,7 +188,14 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         when (event.path) {
             Protocol.RESULT_PATH -> {
                 val text = String(event.data, Charsets.UTF_8)
-                runOnUiThread { statusText.text = "Watch: $text" }
+                runOnUiThread {
+                    when {
+                        wifiConnecting && text.startsWith("Receive failed") ->
+                            wifiFailureReason = text.removePrefix("Receive failed: ").trimEnd('.')
+                        suppressCancelText && text.startsWith("transfer stopped") -> suppressCancelText = false
+                        else -> statusText.text = "Watch: $text"
+                    }
+                }
             }
 
             Protocol.VERSION_PATH -> {
@@ -183,7 +224,9 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
             Protocol.PHASE_RECEIVING -> {
                 watchReportsReceive = true
                 watchCancellable = true
-                setTransfer(percent, "$percent%")
+                if (!wifiConnecting) {
+                    setTransferProgress(percent, if (transferSize > 0) transferSize * percent / 100 else 0)
+                }
                 setWatchBusy(true)
             }
 
@@ -211,12 +254,27 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
             }
 
             Protocol.PHASE_FAILED -> {
+                if (wifiConnecting) {
+                    wifiWatchFailed = true
+                    // The watch couldn't get on Wi-Fi. Give its reason a moment to arrive, then
+                    // stop waiting for it to connect; sendToWatch falls back to Bluetooth.
+                    lifecycleScope.launch {
+                        delay(700)
+                        currentWifiServer?.close()
+                    }
+                    return
+                }
                 watchCancellable = false
                 installText.text = getString(R.string.failed)
                 setWatchBusy(false)
             }
 
             Protocol.PHASE_CANCELLED -> {
+                if (suppressNextWatchCancel) {
+                    suppressNextWatchCancel = false
+                    suppressCancelText = true
+                    return
+                }
                 watchCancellable = false
                 if (transferProgress.progress < 100) transferText.text = getString(R.string.stopped)
                 installText.text = getString(R.string.stopped)
@@ -224,6 +282,24 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
                 setWatchBusy(false)
             }
         }
+    }
+
+    /** "45% · 6.1 MB/s · 1:20 left" */
+    private fun setTransferProgress(percent: Int, bytesDone: Long) {
+        var label = "$percent%"
+        val start = transferStartedAt
+        if (start > 0 && bytesDone > 0) {
+            val elapsedMs = SystemClock.elapsedRealtime() - start
+            if (elapsedMs > 1_500) {
+                val bytesPerSec = bytesDone * 1000 / elapsedMs
+                label += " · ${Formatter.formatShortFileSize(this, bytesPerSec)}/s"
+                if (transferSize > 0 && bytesPerSec > 0) {
+                    val secs = (transferSize - bytesDone) / bytesPerSec
+                    label += " · %d:%02d left".format(secs / 60, secs % 60)
+                }
+            }
+        }
+        setTransfer(percent, label)
     }
 
     private fun setTransfer(percent: Int, label: String) {
@@ -270,6 +346,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         fileText.text = "$selectedName$sizeText"
 
         installSwitch.isChecked = true
+        methodChosenByUser = false
         statusText.text = ""
         updateSelectionUi()
     }
@@ -284,7 +361,47 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
     /** Saving non-APK files needs watch app 5.0; older ones only understand APK installs. */
     private fun watchCanSaveFiles(): Boolean = (watchVersionCode ?: 0) >= Protocol.MIN_WATCH_VERSION_FOR_FILES
 
+    /** Wi-Fi needs watch app 6.0 and a file whose size we know up front. */
+    private fun wifiAllowed(): Boolean =
+        (watchVersionCode ?: 0) >= Protocol.MIN_WATCH_VERSION_FOR_WIFI && selectedSize > 0
+
+    private fun setMethod(wifi: Boolean) {
+        settingMethod = true
+        methodGroup.check(if (wifi) R.id.methodWifi else R.id.methodBluetooth)
+        settingMethod = false
+    }
+
+    private fun updateMethodUi() {
+        val hasFile = selectedUri != null
+        methodLabel.visibility = if (hasFile) View.VISIBLE else View.GONE
+        methodGroup.visibility = methodLabel.visibility
+        methodHint.visibility = methodLabel.visibility
+        if (!hasFile) return
+
+        val wifiOk = wifiAllowed()
+        if (!wifiOk && methodGroup.checkedButtonId == R.id.methodWifi) setMethod(false)
+        // Default: Wi-Fi for anything big enough to be slow over Bluetooth.
+        if (!methodChosenByUser && wifiOk) setMethod(selectedSize >= WIFI_DEFAULT_THRESHOLD)
+
+        val wifi = methodGroup.checkedButtonId == R.id.methodWifi
+        methodHint.text = when {
+            wifi -> getString(R.string.wifi_hint)
+            (watchVersionCode ?: 0) < Protocol.MIN_WATCH_VERSION_FOR_WIFI ->
+                getString(R.string.wifi_needs_update) + bluetoothEstimate()
+            selectedSize <= 0 -> getString(R.string.wifi_needs_size)
+            else -> getString(R.string.bluetooth_hint) + bluetoothEstimate()
+        }
+    }
+
+    /** Rough time over Bluetooth, to show why Wi-Fi is worth it for big files. */
+    private fun bluetoothEstimate(): String {
+        if (selectedSize < WIFI_DEFAULT_THRESHOLD) return ""
+        val minutes = (selectedSize / BLUETOOTH_BYTES_PER_SEC / 60).coerceAtLeast(1)
+        return " " + getString(R.string.bluetooth_estimate, minutes)
+    }
+
     private fun updateSelectionUi() {
+        updateMethodUi()
         val hasFile = selectedUri != null
         installSwitch.visibility = if (hasFile && isApk(selectedName)) View.VISIBLE else View.GONE
         sendButton.text = getString(if (installSelected()) R.string.send else R.string.send_file)
@@ -395,9 +512,10 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
 
     private fun sendSelectedFile() {
         val uri = selectedUri ?: return
+        val useWifi = methodGroup.checkedButtonId == R.id.methodWifi && wifiAllowed()
         sendToWatch(SendSource(selectedName, selectedSize, installSelected()) {
             contentResolver.openInputStream(uri) ?: throw FileNotFoundException("Can't open $uri")
-        })
+        }, useWifi)
     }
 
     /** Pushes the watch app bundled in this phone app to the watch, which installs it over itself. */
@@ -411,15 +529,15 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         sendToWatch(SendSource(name, size, install = true) { assets.open(WATCH_APK_ASSET) })
     }
 
-    private fun sendToWatch(source: SendSource) {
+    private fun sendToWatch(source: SendSource, useWifi: Boolean = false) {
         val node = targetNode ?: return
-        val name = source.name
-        val size = source.size
 
         sending = true
         userCancelled = false
         watchCancellable = false
         watchReportsReceive = false
+        transferStartedAt = 0L
+        transferSize = source.size
         progressGroup.visibility = View.VISIBLE
         installSection.visibility = if (source.install) View.VISIBLE else View.GONE
         setTransfer(0, getString(R.string.starting))
@@ -429,50 +547,22 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         openWatchApp(node.id)
 
         sendJob = lifecycleScope.launch {
-            statusText.text = "Connecting to ${node.displayName}…"
-            val channelClient = Wearable.getChannelClient(this@MainActivity)
-            var channel: ChannelClient.Channel? = null
             try {
-                val path = if (source.install) Protocol.CHANNEL_PATH else Protocol.FILE_CHANNEL_PATH
-                channel = channelClient.openChannel(node.id, path).await()
-                currentChannel = channel
-                val output = channelClient.getOutputStream(channel).await()
-                statusText.text = "Sending $name…"
-
-                withContext(Dispatchers.IO) {
-                    source.open().use { src ->
-                        DataOutputStream(BufferedOutputStream(output, BUFFER_SIZE)).use { out ->
-                            out.writeInt(Protocol.MAGIC)
-                            out.writeInt(Protocol.VERSION)
-                            out.writeUTF(name)
-                            out.writeLong(size)
-
-                            val buffer = ByteArray(BUFFER_SIZE)
-                            var total = 0L
-                            var lastPercent = -1
-                            while (true) {
-                                ensureActive()
-                                val read = src.read(buffer)
-                                if (read < 0) break
-                                out.write(buffer, 0, read)
-                                total += read
-                                if (size > 0) {
-                                    val percent = (total * 100 / size).toInt()
-                                    if (percent != lastPercent) {
-                                        lastPercent = percent
-                                        withContext(Dispatchers.Main) {
-                                            // The watch's own numbers are more accurate once they arrive.
-                                            if (!watchReportsReceive) setTransfer(percent, "$percent%")
-                                        }
-                                    }
-                                }
-                            }
-                            out.flush()
-                        }
+                var sentOverWifi = false
+                if (useWifi) {
+                    sentOverWifi = sendViaWifi(node, source)
+                    if (!sentOverWifi && !userCancelled) {
+                        statusText.text = "Wi‑Fi didn't connect ($wifiFailureReason). Sending over Bluetooth instead…"
+                        transferStartedAt = 0L
                     }
                 }
-                // Closing the output stream signals end-of-file; the watch closes the channel.
-                statusText.text = if (source.install) "Sent $name. Installing on your watch…" else "Sent $name. Saving on your watch…"
+                if (!sentOverWifi) sendViaBluetooth(node, source)
+
+                statusText.text = if (source.install) {
+                    "Sent ${source.name}. Installing on your watch…"
+                } else {
+                    "Sent ${source.name}. Saving on your watch…"
+                }
                 if (!watchReportsReceive) setTransfer(100, getString(R.string.transfer_done))
                 setWatchBusy(true)
             } catch (e: Exception) {
@@ -487,13 +577,145 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
                     statusText.text = "Transfer failed: ${e.message ?: e.javaClass.simpleName}"
                     transferText.text = getString(R.string.failed)
                 }
-                channel?.let { runCatching { channelClient.close(it) } }
             } finally {
+                currentChannel?.let { runCatching { Wearable.getChannelClient(this@MainActivity).close(it) } }
                 currentChannel = null
+                currentWifiServer?.close()
+                currentWifiServer = null
+                wifiConnecting = false
                 sending = false
                 updateControls()
             }
         }
+    }
+
+    /** The original method: stream over the Bluetooth Data Layer. */
+    private suspend fun sendViaBluetooth(node: Node, source: SendSource) {
+        val name = source.name
+        val size = source.size
+        statusText.text = "Connecting to ${node.displayName}…"
+        val channelClient = Wearable.getChannelClient(this)
+        val path = if (source.install) Protocol.CHANNEL_PATH else Protocol.FILE_CHANNEL_PATH
+        val channel = channelClient.openChannel(node.id, path).await()
+        currentChannel = channel
+        val output = channelClient.getOutputStream(channel).await()
+        statusText.text = "Sending $name over Bluetooth…"
+
+        withContext(Dispatchers.IO) {
+            source.open().use { src ->
+                DataOutputStream(BufferedOutputStream(output, BUFFER_SIZE)).use { out ->
+                    out.writeInt(Protocol.MAGIC)
+                    out.writeInt(Protocol.VERSION)
+                    out.writeUTF(name)
+                    out.writeLong(size)
+                    pump(src, size) { buffer, n -> out.write(buffer, 0, n) }
+                    out.flush()
+                }
+            }
+        }
+        // Closing the output stream signals end-of-file; the watch closes the channel, so
+        // don't close it from our side (that could cut off data still in flight).
+        currentChannel = null
+    }
+
+    /**
+     * Fast method: the watch downloads the file from a one-shot server on this phone over the
+     * local network. Returns false (without sending anything) if the watch couldn't connect, so
+     * the caller can fall back to Bluetooth; [wifiFailureReason] then says why.
+     */
+    private suspend fun sendViaWifi(node: Node, source: SendSource): Boolean {
+        val hosts = WifiSendServer.localAddresses()
+        if (hosts.isEmpty()) {
+            wifiFailureReason = "the phone isn't on Wi‑Fi or hotspot"
+            return false
+        }
+        val server = withContext(Dispatchers.IO) { WifiSendServer() }
+        currentWifiServer = server
+        val offer = WifiOffer.create(source.name, source.size, source.install, hosts, server.port)
+
+        wifiConnecting = true
+        wifiWatchFailed = false
+        wifiFailureReason = "the watch didn't connect"
+        statusText.text = "Asking the watch to join Wi‑Fi…"
+        setTransfer(0, getString(R.string.joining_wifi))
+        Wearable.getMessageClient(this)
+            .sendMessage(node.id, Protocol.WIFI_OFFER_PATH, offer.toJson().toByteArray(Charsets.UTF_8))
+            .await()
+
+        val socket = withContext(Dispatchers.IO) {
+            try {
+                server.awaitWatch(offer.token, WIFI_ACCEPT_TIMEOUT_MS)
+            } catch (e: IOException) {
+                null
+            }
+        }
+        wifiConnecting = false
+        if (userCancelled) throw IOException("Stopped")
+        if (socket == null) {
+            if (!wifiWatchFailed) {
+                // The watch is still trying; make it stop before we start over Bluetooth.
+                suppressNextWatchCancel = true
+                runCatching {
+                    Wearable.getMessageClient(this).sendMessage(node.id, Protocol.CANCEL_PATH, ByteArray(0)).await()
+                }
+            }
+            server.close()
+            currentWifiServer = null
+            return false
+        }
+
+        statusText.text = "Sending ${source.name} over Wi‑Fi…"
+        withContext(Dispatchers.IO) {
+            val out = BufferedOutputStream(socket.getOutputStream(), WIFI_BUFFER_SIZE)
+            val cipher = offer.newCipher(encrypt = true)
+            val mac = offer.newMac()
+            val encrypted = ByteArray(WIFI_BUFFER_SIZE)
+            val sent = source.open().use { src ->
+                pump(src, source.size, WIFI_BUFFER_SIZE) { buffer, n ->
+                    val len = cipher.update(buffer, 0, n, encrypted)
+                    mac.update(encrypted, 0, len)
+                    out.write(encrypted, 0, len)
+                }
+            }
+            if (sent != source.size) throw IOException("The file changed while it was being sent")
+            out.write(mac.doFinal())
+            out.flush()
+            // Wait for the watch's "got it" byte so we don't cut the connection early.
+            runCatching { socket.getInputStream().read() }
+        }
+        return true
+    }
+
+    /** Copies [src] with progress updates; returns the number of bytes read. */
+    private suspend fun kotlinx.coroutines.CoroutineScope.pump(
+        src: InputStream,
+        size: Long,
+        bufferSize: Int = BUFFER_SIZE,
+        write: (ByteArray, Int) -> Unit,
+    ): Long {
+        val buffer = ByteArray(bufferSize)
+        var total = 0L
+        var lastPercent = -1
+        withContext(Dispatchers.Main) { if (transferStartedAt == 0L) transferStartedAt = SystemClock.elapsedRealtime() }
+        while (true) {
+            ensureActive()
+            val read = src.read(buffer)
+            if (read < 0) break
+            write(buffer, read)
+            total += read
+            if (size > 0) {
+                val percent = (total * 100 / size).toInt()
+                if (percent != lastPercent) {
+                    lastPercent = percent
+                    val done = total
+                    withContext(Dispatchers.Main) {
+                        // The watch's own numbers are more accurate once they arrive.
+                        if (!watchReportsReceive) setTransferProgress(percent, done)
+                    }
+                }
+            }
+        }
+        return total
     }
 
     /**
@@ -517,6 +739,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
                 // Give the watch a moment to see the cancel before the channel closes.
                 delay(500)
                 currentChannel?.let { runCatching { Wearable.getChannelClient(this@MainActivity).close(it) } }
+                currentWifiServer?.close()
                 sendJob?.cancel()
             }
         }
@@ -557,6 +780,8 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         sendButton.isEnabled = !busy && selectedUri != null && targetNode != null &&
             (installSelected() || watchCanSaveFiles())
         installSwitch.isEnabled = !busy
+        methodBluetooth.isEnabled = !busy
+        methodWifi.isEnabled = !busy && wifiAllowed()
     }
 
     private companion object {
@@ -564,6 +789,10 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         const val BUFFER_SIZE = 64 * 1024
         const val WATCH_SILENCE_TIMEOUT_MS = 120_000L
         const val VERSION_REPLY_TIMEOUT_MS = 4_000L
+        const val WIFI_ACCEPT_TIMEOUT_MS = 45_000
+        const val WIFI_BUFFER_SIZE = 256 * 1024
+        const val WIFI_DEFAULT_THRESHOLD = 10L * 1024 * 1024
+        const val BLUETOOTH_BYTES_PER_SEC = 150L * 1024
         const val WATCH_APK_ASSET = "watch-app.apk"
     }
 }

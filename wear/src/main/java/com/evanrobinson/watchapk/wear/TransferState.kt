@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import android.net.Uri
+import android.os.SystemClock
 import java.io.File
 
 /**
@@ -21,7 +22,16 @@ object TransferState {
 
         data object Idle : Status
 
-        data class Receiving(val name: String, val bytes: Long, val total: Long) : Status {
+        data class Receiving(
+            val name: String,
+            val bytes: Long,
+            val total: Long,
+            val viaWifi: Boolean = false,
+            /** Still joining Wi-Fi / connecting to the phone; no data yet. */
+            val connecting: Boolean = false,
+            /** elapsedRealtime when data started flowing, for the speed readout. */
+            val startedAt: Long = SystemClock.elapsedRealtime(),
+        ) : Status {
             override val busy: Boolean get() = true
             override val cancellable: Boolean get() = true
             val fraction: Float get() = if (total > 0) (bytes.toFloat() / total).coerceIn(0f, 1f) else 0f

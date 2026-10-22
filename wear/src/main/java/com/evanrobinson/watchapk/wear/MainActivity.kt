@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.text.format.Formatter
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -231,16 +232,24 @@ class MainActivity : ComponentActivity() {
             }
 
             is TransferState.Status.Receiving -> {
-                title.text = getString(R.string.receiving)
                 // A new file is coming in (possibly with the same name as the last one).
                 autoInstalledPath = null
+                if (status.connecting) {
+                    title.text = getString(R.string.connecting_wifi)
+                    ring.visibility = View.VISIBLE
+                    ring.progress = 0
+                    detail.text = status.name
+                    return
+                }
+                title.text = getString(if (status.viaWifi) R.string.receiving_wifi else R.string.receiving)
+                val speed = speedText(status)
                 if (status.total > 0) {
                     showProgress(status.fraction)
-                    detail.text = "${status.name}\n${size(status.bytes)} of ${size(status.total)}"
+                    detail.text = "${status.name}\n${size(status.bytes)} of ${size(status.total)}$speed"
                 } else {
                     ring.visibility = View.VISIBLE
                     ring.progress = 0
-                    detail.text = "${status.name}\n${size(status.bytes)}"
+                    detail.text = "${status.name}\n${size(status.bytes)}$speed"
                 }
             }
 
@@ -331,6 +340,20 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun size(bytes: Long): String = Formatter.formatShortFileSize(this, bytes)
+
+    /** "\n2.4 MB/s · 3:10 left", once there's enough data for a stable number. */
+    private fun speedText(status: TransferState.Status.Receiving): String {
+        val elapsedMs = SystemClock.elapsedRealtime() - status.startedAt
+        if (elapsedMs < 1_500 || status.bytes <= 0) return ""
+        val bytesPerSec = status.bytes * 1000 / elapsedMs
+        val left = if (status.total > 0 && bytesPerSec > 0) {
+            val secs = (status.total - status.bytes) / bytesPerSec
+            " · %d:%02d left".format(secs / 60, secs % 60)
+        } else {
+            ""
+        }
+        return "\n${size(bytesPerSec)}/s$left"
+    }
 
     private fun openInstallSettings() {
         if (!ApkInstaller.openInstallPermissionSettings(this)) {

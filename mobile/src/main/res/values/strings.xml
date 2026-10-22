@@ -24,4 +24,13 @@
     <string name="stop">Stop</string>
     <string name="stopping">Stopping…</string>
     <string name="stopped">Stopped</string>
+    <string name="method_label">Transfer method</string>
+    <string name="method_bluetooth">Bluetooth</string>
+    <string name="method_wifi">Wi‑Fi (fast)</string>
+    <string name="joining_wifi">Joining Wi‑Fi…</string>
+    <string name="wifi_hint">Much faster for big files. The phone and watch must be on the same Wi‑Fi network, or the watch on your phone\'s hotspot. If the watch can\'t connect, it falls back to Bluetooth.</string>
+    <string name="bluetooth_hint">Works anywhere the watch is connected, but slow for big files.</string>
+    <string name="bluetooth_estimate">About %1$d min over Bluetooth.</string>
+    <string name="wifi_needs_update">Wi‑Fi transfers need watch app v6.0. Tap \"Update watch app\" to enable them.</string>
+    <string name="wifi_needs_size">Wi‑Fi isn\'t available for this file because its size is unknown.</string>
 </resources>

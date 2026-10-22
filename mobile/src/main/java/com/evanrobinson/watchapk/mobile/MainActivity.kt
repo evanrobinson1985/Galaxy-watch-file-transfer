@@ -41,6 +41,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.BufferedOutputStream
 import java.io.DataOutputStream
+import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStream
@@ -350,7 +351,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
 
     private fun handleIncomingIntent(intent: Intent?) {
         if (intent?.action == ACTION_RELAYED_FILE) {
-            val file = intent.getStringExtra(EXTRA_RELAYED_PATH)?.let(::java.io.File)
+            val file = intent.getStringExtra(EXTRA_RELAYED_PATH)?.let { File(it) }
             if (file != null && file.exists()) {
                 setSelectedFile(Uri.fromFile(file), file.name, file.length())
                 statusText.text = getString(R.string.relay_received)

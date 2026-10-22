@@ -63,6 +63,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
     private lateinit var methodBluetooth: MaterialButton
     private lateinit var methodWifi: MaterialButton
     private lateinit var methodHint: TextView
+    private lateinit var wifiProblemText: TextView
     private lateinit var progressGroup: View
     private lateinit var transferProgress: LinearProgressIndicator
     private lateinit var transferText: TextView
@@ -164,6 +165,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         methodBluetooth = findViewById(R.id.methodBluetooth)
         methodWifi = findViewById(R.id.methodWifi)
         methodHint = findViewById(R.id.methodHint)
+        wifiProblemText = findViewById(R.id.wifiProblemText)
         methodGroup.addOnButtonCheckedListener { _, _, isChecked ->
             if (isChecked && !settingMethod) methodChosenByUser = true
             if (isChecked) updateSelectionUi()
@@ -597,7 +599,10 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
                 if (useWifi) {
                     sentOverWifi = sendViaWifi(node, source)
                     if (!sentOverWifi && !userCancelled) {
-                        statusText.text = "Wi‑Fi didn't connect ($wifiFailureReason). Sending over Bluetooth instead…"
+                        statusText.text = "Wi‑Fi didn't work. Sending over Bluetooth instead…"
+                        // Keep the reason on screen after the Bluetooth transfer replaces the status text.
+                        wifiProblemText.text = getString(R.string.wifi_last_problem, wifiFailureReason)
+                        wifiProblemText.visibility = View.VISIBLE
                         transferStartedAt = 0L
                     }
                 }
@@ -678,6 +683,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         currentWifiServer = server
         val offer = WifiOffer.create(source.name, source.size, source.install, hosts, server.port)
 
+        wifiProblemText.visibility = View.GONE
         wifiConnecting = true
         wifiWatchFailed = false
         wifiFailureReason = "the watch didn't connect"
@@ -836,7 +842,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         private const val BUFFER_SIZE = 64 * 1024
         private const val WATCH_SILENCE_TIMEOUT_MS = 120_000L
         private const val VERSION_REPLY_TIMEOUT_MS = 4_000L
-        private const val WIFI_ACCEPT_TIMEOUT_MS = 45_000
+        private const val WIFI_ACCEPT_TIMEOUT_MS = 60_000
         private const val WIFI_BUFFER_SIZE = 256 * 1024
         private const val WIFI_DEFAULT_THRESHOLD = 10L * 1024 * 1024
         private const val BLUETOOTH_BYTES_PER_SEC = 150L * 1024

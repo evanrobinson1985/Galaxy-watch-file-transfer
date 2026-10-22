@@ -31,6 +31,9 @@
     <string name="delete">Delete</string>
     <string name="cancel">Cancel</string>
     <string name="files_hint">Tap to open or install. Hold to delete.</string>
-    <string name="connecting_wifi">Joining Wi‑Fi</string>
+    <string name="connecting_wifi">Turning on Wi‑Fi</string>
     <string name="receiving_wifi">Receiving over Wi‑Fi</string>
+    <string name="connecting_phone">Connecting to phone</string>
+    <string name="wifi_settings">Wi‑Fi settings</string>
+    <string name="wifi_settings_missing">Open Settings › Connections › Wi‑Fi on the watch.</string>
 </resources>

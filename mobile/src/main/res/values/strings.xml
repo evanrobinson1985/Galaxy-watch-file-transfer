@@ -47,4 +47,5 @@
     <string name="relay_sending">Handing over…</string>
     <string name="relay_done">Done ✅ Now tap the \"Tap to send to watch\" notification (or open Watch APK Installer outside Secure Folder).</string>
     <string name="relay_unreachable">Couldn\'t reach Watch APK Installer outside Secure Folder (%1$s). Open it there, turn on \"Allow sending from Secure Folder\", then tap Hand over again.</string>
+    <string name="wifi_last_problem">Last Wi‑Fi attempt failed: %1$s</string>
 </resources>

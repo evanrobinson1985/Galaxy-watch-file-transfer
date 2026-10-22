@@ -29,6 +29,8 @@ object TransferState {
             val viaWifi: Boolean = false,
             /** Still joining Wi-Fi / connecting to the phone; no data yet. */
             val connecting: Boolean = false,
+            /** Wi-Fi is up; now opening the connection to the phone. */
+            val connectingToPhone: Boolean = false,
             /** elapsedRealtime when data started flowing, for the speed readout. */
             val startedAt: Long = SystemClock.elapsedRealtime(),
         ) : Status {
@@ -52,7 +54,8 @@ object TransferState {
 
         data class Success(val name: String, val packageName: String?) : Status
 
-        data class Failure(val message: String) : Status
+        /** [wifiProblem]: the failure screen offers a shortcut to Wi-Fi settings. */
+        data class Failure(val message: String, val wifiProblem: Boolean = false) : Status
 
         data class Cancelled(val message: String) : Status
 

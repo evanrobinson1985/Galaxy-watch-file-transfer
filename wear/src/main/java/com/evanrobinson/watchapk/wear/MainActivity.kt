@@ -9,6 +9,7 @@ import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
+import android.provider.Settings
 import android.text.format.Formatter
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -235,7 +236,9 @@ class MainActivity : ComponentActivity() {
                 // A new file is coming in (possibly with the same name as the last one).
                 autoInstalledPath = null
                 if (status.connecting) {
-                    title.text = getString(R.string.connecting_wifi)
+                    title.text = getString(
+                        if (status.connectingToPhone) R.string.connecting_phone else R.string.connecting_wifi,
+                    )
                     ring.visibility = View.VISIBLE
                     ring.progress = 0
                     detail.text = status.name
@@ -320,7 +323,18 @@ class MainActivity : ComponentActivity() {
             is TransferState.Status.Failure -> {
                 title.text = getString(R.string.failed)
                 detail.text = status.message
-                showButton(primaryButton, R.string.ok) { TransferState.set(TransferState.Status.Idle) }
+                if (status.wifiProblem) {
+                    showButton(primaryButton, R.string.wifi_settings) {
+                        try {
+                            startActivity(Intent(Settings.ACTION_WIFI_SETTINGS))
+                        } catch (e: Exception) {
+                            Toast.makeText(this, R.string.wifi_settings_missing, Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    showButton(secondaryButton, R.string.ok) { TransferState.set(TransferState.Status.Idle) }
+                } else {
+                    showButton(primaryButton, R.string.ok) { TransferState.set(TransferState.Status.Idle) }
+                }
             }
         }
     }

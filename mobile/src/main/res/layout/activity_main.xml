@@ -118,6 +118,16 @@
             android:textAppearance="?attr/textAppearanceBodySmall"
             android:visibility="gone" />
 
+        <TextView
+            android:id="@+id/wifiProblemText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textAppearance="?attr/textAppearanceBodySmall"
+            android:textColor="?attr/colorError"
+            android:textIsSelectable="true"
+            android:visibility="gone" />
+
         <com.google.android.material.button.MaterialButton
             android:id="@+id/sendButton"
             android:layout_width="match_parent"

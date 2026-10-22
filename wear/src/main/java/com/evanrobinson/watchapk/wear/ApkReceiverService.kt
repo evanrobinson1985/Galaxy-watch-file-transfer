@@ -82,6 +82,11 @@ class ApkReceiverService : WearableListenerService() {
 
             val network = link.requestNetwork(WIFI_JOIN_TIMEOUT_MS)
             TransferControl.throwIfCancelled()
+            TransferState.set(
+                TransferState.Status.Receiving(
+                    name, 0, offer.size, viaWifi = true, connecting = true, connectingToPhone = true,
+                ),
+            )
             val socket = link.connect(network, offer.hosts, offer.port)
             socket.getOutputStream().apply {
                 write(offer.token)
@@ -158,8 +163,10 @@ class ApkReceiverService : WearableListenerService() {
                 return
             }
             Log.e(TAG, "Receive failed", e)
-            val reason = "Receive failed: ${e.message ?: e.javaClass.simpleName}"
-            TransferState.set(TransferState.Status.Failure(reason))
+            val message = e.message ?: e.javaClass.simpleName
+            // The phone recognizes the "Receive failed:" prefix when deciding to fall back to Bluetooth.
+            val reason = "Receive failed: $message"
+            TransferState.set(TransferState.Status.Failure(message, wifiProblem = e is WifiProblemException))
             PhoneReporter.progress(this, nodeId, Protocol.PHASE_FAILED, 0)
             PhoneReporter.send(this, nodeId, reason)
         } finally {
@@ -285,7 +292,8 @@ class ApkReceiverService : WearableListenerService() {
         private const val BUFFER_SIZE = 64 * 1024
         private const val UNKNOWN_SIZE_REPORT_STEP = 512 * 1024L
         private const val SPACE_RESERVE = 50L * 1024 * 1024
-        private const val WIFI_JOIN_TIMEOUT_MS = 20_000L
+        // Galaxy watches can take a while to switch Wi-Fi on while connected over Bluetooth.
+        private const val WIFI_JOIN_TIMEOUT_MS = 35_000L
         private const val MAX_WAKE_LOCK_MS = 6 * 60 * 60 * 1000L
         const val INCOMING_DIR = "incoming"
     }

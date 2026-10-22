@@ -13,6 +13,21 @@ Supported files to install: plain `.apk`, and split bundles `.apks` / `.xapk` (a
 
 The transfer runs over the Wearable Data Layer (the same Bluetooth/Wi-Fi link Galaxy Wearable uses), so you don't need to set up Wi-Fi debugging every time you want to install something.
 
+## What's new in 7.0
+
+- **Share from Secure Folder.** Secure Folder works like a separate phone inside your phone. Its share menu only lists apps installed *inside* Secure Folder, and those apps can't reach your watch. So this works in two steps:
+  1. **One-time setup:**
+     - **Inside Secure Folder:** add Watch APK Installer. Either use Secure Folder's **+ → Add apps** and pick it, or install `WatchApkInstaller-phone.apk` from within Secure Folder's My Files.
+     - **Outside Secure Folder (in the normal app):** turn on **Allow sending from Secure Folder** at the bottom of the screen and allow notifications. A small "Ready for Secure Folder files" notification stays while it's on.
+  2. **To send a file:**
+     1. Inside Secure Folder, share it to **Watch APK Installer** (or open the app there and choose a file). It shows **Handing over…**, then **Done ✅**.
+     2. Tap the **Tap to send to watch** notification. The normal app opens with the file already selected.
+     3. Choose Bluetooth or Wi‑Fi, then tap **Send**.
+- **Good to know:**
+  - The handoff stays inside the phone (on its internal 127.0.0.1 connection) and never touches Wi‑Fi or the internet. But the file **does leave Secure Folder**: a copy sits in the normal app's private cache until the next handoff replaces it.
+  - The copy inside Secure Folder is a separate install, so update it too when you update the phone app.
+  - Android 15 limits this kind of background listener to about 6 hours a day. If the Secure Folder copy says it can't reach the normal app, open the normal app once and it starts listening again.
+
 ## What's new in 6.0
 
 - **Fast Wi‑Fi transfers for big files.** After you pick a file, choose a **Transfer method**:

@@ -1,6 +1,9 @@
 package com.evanrobinson.watchapk.mobile
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
@@ -65,6 +68,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
     private lateinit var installProgress: LinearProgressIndicator
     private lateinit var installText: TextView
     private lateinit var stopButton: MaterialButton
+    private lateinit var relaySwitch: MaterialSwitch
 
     private var selectedUri: Uri? = null
     private var selectedName: String = "app.apk"
@@ -121,6 +125,9 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         if (uri != null) setSelectedFile(uri)
     }
 
+    private val requestNotifications =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { startRelayIfEnabled() }
+
     private val backBlocker = object : OnBackPressedCallback(false) {
         override fun handleOnBackPressed() {
             Toast.makeText(this@MainActivity, R.string.busy_toast, Toast.LENGTH_SHORT).show()
@@ -129,6 +136,15 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (SecureFolderRelay.isInSecondaryProfile(this)) {
+            // Inside Secure Folder the watch can't be reached; hand files to the normal copy instead.
+            startActivity(
+                Intent(intent).setClass(this, RelayActivity::class.java)
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
+            )
+            finish()
+            return
+        }
         setContentView(R.layout.activity_main)
 
         watchStatus = findViewById(R.id.watchStatus)
@@ -157,6 +173,22 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         installProgress = findViewById(R.id.installProgress)
         installText = findViewById(R.id.installText)
         stopButton = findViewById(R.id.stopButton)
+        relaySwitch = findViewById(R.id.relaySwitch)
+        relaySwitch.isChecked = RelayService.isEnabled(this)
+        relaySwitch.setOnCheckedChangeListener { _, checked ->
+            RelayService.setEnabled(this, checked)
+            if (!checked) {
+                RelayService.stop(this)
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+            ) {
+                // Needed for the "Tap to send to watch" notification.
+                requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                startRelayIfEnabled()
+            }
+        }
+        startRelayIfEnabled()
 
         onBackPressedDispatcher.addCallback(this, backBlocker)
         findWatchButton.setOnClickListener { findWatch() }
@@ -174,8 +206,12 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
     }
 
     override fun onDestroy() {
-        Wearable.getMessageClient(this).removeListener(this)
+        if (::relaySwitch.isInitialized) Wearable.getMessageClient(this).removeListener(this)
         super.onDestroy()
+    }
+
+    private fun startRelayIfEnabled() {
+        if (RelayService.isEnabled(this)) runCatching { RelayService.start(this) }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -313,6 +349,14 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
     }
 
     private fun handleIncomingIntent(intent: Intent?) {
+        if (intent?.action == ACTION_RELAYED_FILE) {
+            val file = intent.getStringExtra(EXTRA_RELAYED_PATH)?.let(::java.io.File)
+            if (file != null && file.exists()) {
+                setSelectedFile(Uri.fromFile(file), file.name, file.length())
+                statusText.text = getString(R.string.relay_received)
+            }
+            return
+        }
         val uri = when (intent?.action) {
             Intent.ACTION_SEND -> IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
             Intent.ACTION_VIEW -> intent.data
@@ -321,10 +365,10 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         if (uri != null) setSelectedFile(uri)
     }
 
-    private fun setSelectedFile(uri: Uri) {
-        var name: String? = null
-        var size = -1L
-        try {
+    private fun setSelectedFile(uri: Uri, knownName: String? = null, knownSize: Long = -1L) {
+        var name: String? = knownName
+        var size = knownSize
+        if (knownName == null) try {
             contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)
                 ?.use { c ->
                     if (c.moveToFirst()) {
@@ -784,15 +828,17 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         methodWifi.isEnabled = !busy && wifiAllowed()
     }
 
-    private companion object {
-        const val TAG = "WatchApkInstaller"
-        const val BUFFER_SIZE = 64 * 1024
-        const val WATCH_SILENCE_TIMEOUT_MS = 120_000L
-        const val VERSION_REPLY_TIMEOUT_MS = 4_000L
-        const val WIFI_ACCEPT_TIMEOUT_MS = 45_000
-        const val WIFI_BUFFER_SIZE = 256 * 1024
-        const val WIFI_DEFAULT_THRESHOLD = 10L * 1024 * 1024
-        const val BLUETOOTH_BYTES_PER_SEC = 150L * 1024
-        const val WATCH_APK_ASSET = "watch-app.apk"
+    companion object {
+        const val ACTION_RELAYED_FILE = "com.evanrobinson.watchapk.RELAYED_FILE"
+        const val EXTRA_RELAYED_PATH = "relayed_path"
+        private const val TAG = "WatchApkInstaller"
+        private const val BUFFER_SIZE = 64 * 1024
+        private const val WATCH_SILENCE_TIMEOUT_MS = 120_000L
+        private const val VERSION_REPLY_TIMEOUT_MS = 4_000L
+        private const val WIFI_ACCEPT_TIMEOUT_MS = 45_000
+        private const val WIFI_BUFFER_SIZE = 256 * 1024
+        private const val WIFI_DEFAULT_THRESHOLD = 10L * 1024 * 1024
+        private const val BLUETOOTH_BYTES_PER_SEC = 150L * 1024
+        private const val WATCH_APK_ASSET = "watch-app.apk"
     }
 }

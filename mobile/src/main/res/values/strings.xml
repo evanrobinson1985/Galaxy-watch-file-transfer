@@ -33,4 +33,18 @@
     <string name="bluetooth_estimate">About %1$d min over Bluetooth.</string>
     <string name="wifi_needs_update">Wi‑Fi transfers need watch app v6.0. Tap \"Update watch app\" to enable them.</string>
     <string name="wifi_needs_size">Wi‑Fi isn\'t available for this file because its size is unknown.</string>
+    <string name="relay_switch">Allow sending from Secure Folder</string>
+    <string name="relay_switch_hint">Lets the copy of this app inside Secure Folder hand files to this one, which sends them to your watch. Keeps a small notification while on.</string>
+    <string name="relay_ongoing_title">Ready for Secure Folder files</string>
+    <string name="relay_ongoing_text">Share a file to Watch APK Installer inside Secure Folder</string>
+    <string name="relay_stop">Turn off</string>
+    <string name="relay_ready_title">Tap to send to watch</string>
+    <string name="relay_channel_listening">Secure Folder bridge</string>
+    <string name="relay_channel_ready">Files from Secure Folder</string>
+    <string name="relay_received">Received from Secure Folder. Pick how to send it, then tap Send.</string>
+    <string name="relay_intro">Your watch can\'t be reached from inside Secure Folder, so this hands the file to Watch APK Installer outside Secure Folder. Then tap its \"Tap to send to watch\" notification.</string>
+    <string name="relay_send">Hand over to Watch APK Installer</string>
+    <string name="relay_sending">Handing over…</string>
+    <string name="relay_done">Done ✅ Now tap the \"Tap to send to watch\" notification (or open Watch APK Installer outside Secure Folder).</string>
+    <string name="relay_unreachable">Couldn\'t reach Watch APK Installer outside Secure Folder (%1$s). Open it there, turn on \"Allow sending from Secure Folder\", then tap Hand over again.</string>
 </resources>

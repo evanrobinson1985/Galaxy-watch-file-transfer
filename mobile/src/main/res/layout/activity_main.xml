@@ -216,5 +216,19 @@
             android:layout_marginTop="16dp"
             android:textAppearance="?attr/textAppearanceBodyMedium"
             android:textIsSelectable="true" />
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/relaySwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="32dp"
+            android:text="@string/relay_switch" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/relay_switch_hint"
+            android:textAppearance="?attr/textAppearanceBodySmall" />
     </LinearLayout>
 </ScrollView>

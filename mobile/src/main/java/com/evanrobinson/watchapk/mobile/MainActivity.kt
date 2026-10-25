@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
 import android.provider.OpenableColumns
+import android.provider.Settings
 import android.text.format.Formatter
 import android.util.Log
 import android.view.View
@@ -31,6 +32,7 @@ import com.google.android.gms.wearable.Node
 import com.google.android.gms.wearable.Wearable
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import kotlinx.coroutines.CompletableDeferred
@@ -58,6 +60,10 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
     private lateinit var updateWatchButton: MaterialButton
     private lateinit var pickButton: MaterialButton
     private lateinit var pickAppsButton: MaterialButton
+
+    /** Waiting for the user to allow installs from this app before updating it. */
+    private var pendingRelease: Updater.Release? = null
+    private var watchUpdatePromptShown = false
     private var preparingApps = false
     private lateinit var sendButton: MaterialButton
     private lateinit var installSwitch: MaterialSwitch
@@ -238,7 +244,137 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
 
         handleIncomingIntent(intent)
         findWatch()
+
+        findViewById<MaterialButton>(R.id.checkUpdatesButton).apply {
+            text = getString(R.string.check_updates, BuildConfig.VERSION_NAME)
+            setOnClickListener { checkForUpdates(manual = true) }
+        }
+        if (Updater.shouldAutoCheck(this)) checkForUpdates(manual = false)
     }
+
+    override fun onResume() {
+        super.onResume()
+        // Back from "Install unknown apps" settings: carry on with the update if now allowed.
+        val release = pendingRelease
+        if (release != null && packageManager.canRequestPackageInstalls()) startUpdate(release)
+    }
+
+    // --- Updates from GitHub ---------------------------------------------------------------
+
+    private fun checkForUpdates(manual: Boolean) {
+        lifecycleScope.launch {
+            val release = try {
+                withContext(Dispatchers.IO) { Updater.fetchLatest(applicationContext) }
+            } catch (e: Exception) {
+                if (manual) toast(getString(R.string.update_check_failed, e.message ?: e.javaClass.simpleName))
+                return@launch
+            }
+            if (release != null && release.versionCode > BuildConfig.VERSION_CODE) {
+                showUpdateDialog(release)
+            } else if (manual) {
+                toast(getString(R.string.up_to_date, BuildConfig.VERSION_NAME))
+            }
+        }
+    }
+
+    private fun showUpdateDialog(release: Updater.Release) {
+        // Don't interrupt a transfer; the next check will ask again.
+        if (isFinishing || sending || queueActive) return
+        val notes = release.notes.take(600).trim()
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.update_title)
+            .setMessage(
+                getString(R.string.update_message, release.versionName, BuildConfig.VERSION_NAME) +
+                    if (notes.isNotEmpty()) "\n\n$notes" else "",
+            )
+            .setPositiveButton(R.string.update_now) { _, _ -> startUpdate(release) }
+            .setNegativeButton(R.string.remind_later) { _, _ -> Updater.remindLater(this) }
+            .setCancelable(false)
+            .show()
+    }
+
+    private fun startUpdate(release: Updater.Release) {
+        if (!packageManager.canRequestPackageInstalls()) {
+            pendingRelease = release
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.update_title)
+                .setMessage(R.string.update_allow_installs)
+                .setPositiveButton(R.string.open_settings) { _, _ ->
+                    runCatching {
+                        startActivity(
+                            Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")),
+                        )
+                    }
+                }
+                .setNegativeButton(android.R.string.cancel) { _, _ -> pendingRelease = null }
+                .show()
+            return
+        }
+        pendingRelease = null
+
+        val view = layoutInflater.inflate(R.layout.dialog_update_progress, null)
+        val bar = view.findViewById<LinearProgressIndicator>(R.id.updateProgress)
+        val label = view.findViewById<TextView>(R.id.updateProgressText)
+        var cancelled = false
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle(getString(R.string.update_downloading, release.versionName))
+            .setView(view)
+            .setCancelable(false)
+            .setNegativeButton(android.R.string.cancel) { _, _ -> cancelled = true }
+            .show()
+
+        lifecycleScope.launch {
+            try {
+                val apk = java.io.File(cacheDir, "update/WatchApkInstaller-phone.apk")
+                withContext(Dispatchers.IO) {
+                    var lastPercent = -1
+                    Updater.download(release, apk, { cancelled }) { done, total ->
+                        val percent = if (total > 0) (done * 100 / total).toInt() else 0
+                        if (percent != lastPercent) {
+                            lastPercent = percent
+                            runOnUiThread {
+                                bar.setProgressCompat(percent, true)
+                                label.text = getString(
+                                    R.string.update_progress,
+                                    Formatter.formatShortFileSize(this@MainActivity, done),
+                                    Formatter.formatShortFileSize(this@MainActivity, total.coerceAtLeast(done)),
+                                )
+                            }
+                        }
+                    }
+                }
+                label.text = getString(R.string.update_installing)
+                withContext(Dispatchers.IO) { Updater.install(applicationContext, apk) }
+                dialog.dismiss()
+            } catch (e: Exception) {
+                dialog.dismiss()
+                if (!cancelled) toast(getString(R.string.update_failed, e.message ?: e.javaClass.simpleName))
+            }
+        }
+    }
+
+    /** After the phone app updates, offer to bring the watch app up to the bundled version. */
+    private fun maybeOfferWatchUpdate() {
+        val code = watchVersionCode
+        val outdated = if (code != null) code < BuildConfig.WATCH_VERSION_CODE else watchVersionUnknown
+        if (!outdated || watchUpdatePromptShown || targetNode == null || isFinishing) return
+        if (sending || queueActive || watchBusy || Updater.watchSnoozed(this)) return
+        watchUpdatePromptShown = true
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.watch_update_title)
+            .setMessage(
+                getString(
+                    R.string.watch_update_message,
+                    watchVersionName?.let { "v$it" } ?: getString(R.string.an_older_version),
+                    BuildConfig.WATCH_VERSION_NAME,
+                ),
+            )
+            .setPositiveButton(R.string.update_now) { _, _ -> sendWatchAppUpdate() }
+            .setNegativeButton(R.string.remind_later) { _, _ -> Updater.remindWatchLater(this) }
+            .show()
+    }
+
+    private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_LONG).show()
 
     override fun onDestroy() {
         if (::relaySwitch.isInitialized) Wearable.getMessageClient(this).removeListener(this)
@@ -644,6 +780,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
             getString(R.string.update_watch_app_to, bundledName)
         }
         updateSelectionUi()
+        maybeOfferWatchUpdate()
     }
 
     /** Something to stream to the watch: a picked file, or the watch app bundled in this app. */

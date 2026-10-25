@@ -31,3 +31,36 @@ jobs:
         with:
           name: WatchApkInstaller-apks
           path: out/*.apk
+
+  # Publishes each version as a GitHub Release with plain APK downloads, which the phone app's
+  # updater checks (releases/latest). Re-pushing the same version refreshes that release's APKs.
+  release:
+    needs: build
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/compassionate-cerf-6vyynb')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: WatchApkInstaller-apks
+          path: out
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          CODE=$(grep '^appVersionCode=' gradle.properties | cut -d= -f2)
+          NAME=$(grep '^appVersionName=' gradle.properties | cut -d= -f2)
+          TAG="v$NAME"
+          # The app reads "versionCode: N" from the first line of the notes.
+          { echo "versionCode: $CODE"; echo; git log -1 --pretty=%B; } > notes.md
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" out/*.apk --clobber
+            gh release edit "$TAG" --notes-file notes.md --latest
+          else
+            gh release create "$TAG" out/*.apk --title "Watch APK Installer $NAME" \
+              --notes-file notes.md --target "$GITHUB_SHA" --latest
+          fi

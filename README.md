@@ -13,6 +13,16 @@ Supported files to install: plain `.apk`, and split bundles `.apks` / `.xapk` (a
 
 The transfer runs over the Wearable Data Layer (the same Bluetooth/Wi-Fi link Galaxy Wearable uses), so you don't need to set up Wi-Fi debugging every time you want to install something.
 
+## What's new in 8.1
+
+- **Automatic updates from GitHub.** Every build of this branch is now also published as a [GitHub Release](https://github.com/evanrobinson1985/Galaxy-watch-file-transfer/releases), with both APKs attached as plain downloads (no zip, no sign-in).
+- **Phone:** the phone app checks for a newer release when you open it (at most every 6 hours). You can also tap **Check for updates** at the bottom of the screen.
+  - If there's a new version, it asks **Update now** or **Remind me later** (asks again in 24 hours).
+  - **Update now** downloads it with a progress bar and installs it over the current app. The first time, Android asks you to allow installs from Watch APK Installer.
+- **Watch:** the new phone app carries the matching watch app. If the watch is behind, the phone asks **Update now** or **Remind me later**, and Update now sends it to the watch the usual way.
+- **One last manual install:** to get 8.1, install it by hand once. From then on, updates arrive by themselves.
+- **Updates only install over each other because of the shared signing key.** Every build is signed with `signing/shared-debug.keystore`, so keep using it.
+
 ## What's new in 8.0
 
 - **Send apps that are already installed on your phone.** Tap **Choose installed apps** for a list of every app on the phone.

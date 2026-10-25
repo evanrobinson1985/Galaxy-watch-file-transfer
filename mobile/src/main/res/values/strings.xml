@@ -73,4 +73,20 @@
     <string name="app_system">system</string>
     <string name="preparing_apps">Preparing app %1$d of %2$d…</string>
     <string name="apps_ready">Ready to send. Phone apps only run on the watch if they support Wear OS; others may fail to install or won\'t open.</string>
+    <string name="check_updates">Check for updates (v%1$s)</string>
+    <string name="up_to_date">You\'re up to date (v%1$s).</string>
+    <string name="update_check_failed">Couldn\'t check for updates: %1$s</string>
+    <string name="update_title">Update available</string>
+    <string name="update_message">Watch APK Installer %1$s is available. You have %2$s.</string>
+    <string name="update_now">Update now</string>
+    <string name="remind_later">Remind me later</string>
+    <string name="open_settings">Open settings</string>
+    <string name="update_allow_installs">To update itself, Watch APK Installer needs permission to install apps. Turn on \"Allow from this source\", then come back.</string>
+    <string name="update_downloading">Downloading %1$s…</string>
+    <string name="update_progress">%1$s of %2$s</string>
+    <string name="update_installing">Installing… confirm if Android asks.</string>
+    <string name="update_failed">Update failed: %1$s</string>
+    <string name="watch_update_title">Update the watch app?</string>
+    <string name="watch_update_message">Your watch has %1$s of the watch app. This phone app includes v%2$s. Update it now? Keep the watch near the phone.</string>
+    <string name="an_older_version">an older version</string>
 </resources>

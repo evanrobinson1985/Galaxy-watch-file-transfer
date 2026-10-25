@@ -13,6 +13,12 @@ Supported files to install: plain `.apk`, and split bundles `.apks` / `.xapk` (a
 
 The transfer runs over the Wearable Data Layer (the same Bluetooth/Wi-Fi link Galaxy Wearable uses), so you don't need to set up Wi-Fi debugging every time you want to install something.
 
+## What's new in 8.2
+
+- **Wi‑Fi first, always.** **Wi‑Fi (fast)** is now the default for every transfer, whatever the file size, and also for watch-app updates. If the watch can't join Wi‑Fi or reach the phone, the transfer switches to Bluetooth automatically.
+- **The Bluetooth / Wi‑Fi switch is still your choice, and the app remembers it.** Pick Bluetooth and it stays on Bluetooth until you switch back.
+- Bluetooth is used anyway (without changing your choice) when Wi‑Fi can't work: the watch app is older than 6.0, or the file's size is unknown.
+
 ## What's new in 8.1
 
 - **Automatic updates from GitHub.** Every build of this branch is now also published as a [GitHub Release](https://github.com/evanrobinson1985/Galaxy-watch-file-transfer/releases), with both APKs attached as plain downloads (no zip, no sign-in).

@@ -133,8 +133,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
     private var suppressNextWatchCancel = false
     private var suppressCancelText = false
 
-    /** The user picked a method for the current file, so don't change it automatically. */
-    private var methodChosenByUser = false
+    /** Set while we change the method buttons ourselves, so it isn't saved as the user's choice. */
     private var settingMethod = false
 
     /** For the speed / time-left readout. */
@@ -196,8 +195,9 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         methodWifi = findViewById(R.id.methodWifi)
         methodHint = findViewById(R.id.methodHint)
         wifiProblemText = findViewById(R.id.wifiProblemText)
-        methodGroup.addOnButtonCheckedListener { _, _, isChecked ->
-            if (isChecked && !settingMethod) methodChosenByUser = true
+        methodGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            // Remember the user's choice (Wi-Fi by default) for every later transfer.
+            if (isChecked && !settingMethod) setPreferWifi(checkedId == R.id.methodWifi)
             if (isChecked) updateSelectionUi()
         }
         progressGroup = findViewById(R.id.progressGroup)
@@ -617,7 +617,6 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         }
 
         installSwitch.isChecked = true
-        methodChosenByUser = false
         statusText.text = ""
         updateSelectionUi()
     }
@@ -641,6 +640,13 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
     private fun wifiAllowed(): Boolean =
         (watchVersionCode ?: 0) >= Protocol.MIN_WATCH_VERSION_FOR_WIFI && selectedSize > 0
 
+    private fun preferWifi(): Boolean =
+        getSharedPreferences(SETTINGS, MODE_PRIVATE).getBoolean(KEY_PREFER_WIFI, true)
+
+    private fun setPreferWifi(wifi: Boolean) {
+        getSharedPreferences(SETTINGS, MODE_PRIVATE).edit().putBoolean(KEY_PREFER_WIFI, wifi).apply()
+    }
+
     private fun setMethod(wifi: Boolean) {
         settingMethod = true
         methodGroup.check(if (wifi) R.id.methodWifi else R.id.methodBluetooth)
@@ -654,10 +660,9 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         methodHint.visibility = methodLabel.visibility
         if (!hasFile) return
 
-        val wifiOk = wifiAllowed()
-        if (!wifiOk && methodGroup.checkedButtonId == R.id.methodWifi) setMethod(false)
-        // Default: Wi-Fi for anything big enough to be slow over Bluetooth.
-        if (!methodChosenByUser && wifiOk) setMethod(selectedSize >= WIFI_DEFAULT_THRESHOLD)
+        // Wi-Fi unless the user picked Bluetooth, or Wi-Fi can't be used for this file/watch.
+        // (Showing Bluetooth for those cases doesn't change the saved choice.)
+        setMethod(preferWifi() && wifiAllowed())
 
         val wifi = methodGroup.checkedButtonId == R.id.methodWifi
         methodHint.text = when {
@@ -844,7 +849,10 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
             -1L
         }
         val name = "WatchApkInstaller-watch-${BuildConfig.WATCH_VERSION_NAME}.apk"
-        sendToWatch(SendSource(name, size, install = true) { assets.open(WATCH_APK_ASSET) })
+        // Wi-Fi first (falls back to Bluetooth) if the watch app already supports it.
+        val useWifi = preferWifi() && size > 0 &&
+            (watchVersionCode ?: 0) >= Protocol.MIN_WATCH_VERSION_FOR_WIFI
+        sendToWatch(SendSource(name, size, install = true) { assets.open(WATCH_APK_ASSET) }, useWifi)
     }
 
     private fun sendToWatch(source: SendSource, useWifi: Boolean = false) {
@@ -1122,5 +1130,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         private const val WIFI_DEFAULT_THRESHOLD = 10L * 1024 * 1024
         private const val BLUETOOTH_BYTES_PER_SEC = 150L * 1024
         private const val WATCH_APK_ASSET = "watch-app.apk"
+        private const val SETTINGS = "settings"
+        private const val KEY_PREFER_WIFI = "prefer_wifi"
     }
 }

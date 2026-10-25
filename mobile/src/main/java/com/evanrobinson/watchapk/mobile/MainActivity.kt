@@ -19,7 +19,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.concurrent.futures.await
 import androidx.core.content.IntentCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.wear.remote.interactions.RemoteActivityHelper
 import com.google.android.gms.wearable.CapabilityClient
 import com.google.android.gms.wearable.ChannelClient
@@ -31,6 +33,7 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.progressindicator.LinearProgressIndicator
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -41,7 +44,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.BufferedOutputStream
 import java.io.DataOutputStream
-import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStream
@@ -71,6 +73,19 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
     private lateinit var installText: TextView
     private lateinit var stopButton: MaterialButton
     private lateinit var relaySwitch: MaterialSwitch
+    private lateinit var relayStatusText: TextView
+    private lateinit var transferLabel: TextView
+
+    /** Files chosen to send; the selected* fields below describe the first one / the total. */
+    private data class Picked(val uri: Uri, val name: String, val size: Long)
+
+    private var picked: List<Picked> = emptyList()
+
+    /** Sending several files one after another. */
+    private var queueJob: Job? = null
+    private var queueActive = false
+    private var watchFinished: CompletableDeferred<Boolean>? = null
+    private var lastSendFailed = false
 
     private var selectedUri: Uri? = null
     private var selectedName: String = "app.apk"
@@ -123,8 +138,8 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
 
     private val remoteActivityHelper by lazy { RemoteActivityHelper(this) }
 
-    private val pickApk = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) setSelectedFile(uri)
+    private val pickApk = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) setSelectedFiles(uris.map(::describe))
     }
 
     private val requestNotifications =
@@ -177,9 +192,12 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         installText = findViewById(R.id.installText)
         stopButton = findViewById(R.id.stopButton)
         relaySwitch = findViewById(R.id.relaySwitch)
+        relayStatusText = findViewById(R.id.relayStatusText)
+        transferLabel = findViewById(R.id.transferLabel)
         relaySwitch.isChecked = RelayService.isEnabled(this)
         relaySwitch.setOnCheckedChangeListener { _, checked ->
             RelayService.setEnabled(this, checked)
+            renderRelayStatus(RelayService.status.value)
             if (!checked) {
                 RelayService.stop(this)
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -189,6 +207,11 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
                 requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
             } else {
                 startRelayIfEnabled()
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                RelayService.status.collect { renderRelayStatus(it) }
+            }
+        }
             }
         }
         startRelayIfEnabled()
@@ -211,6 +234,21 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
     override fun onDestroy() {
         if (::relaySwitch.isInitialized) Wearable.getMessageClient(this).removeListener(this)
         super.onDestroy()
+    }
+
+    private fun renderRelayStatus(status: RelayService.Status) {
+        if (!relaySwitch.isChecked) {
+            relayStatusText.visibility = View.GONE
+            return
+        }
+        relayStatusText.visibility = View.VISIBLE
+        relayStatusText.text = when (status) {
+            is RelayService.Status.Listening ->
+                getString(R.string.relay_status_listening, status.addresses.joinToString())
+            RelayService.Status.Starting -> getString(R.string.relay_status_starting)
+            RelayService.Status.Off -> getString(R.string.relay_status_off)
+            is RelayService.Status.Error -> getString(R.string.relay_status_error, status.message)
+        }
     }
 
     private fun startRelayIfEnabled() {
@@ -286,6 +324,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
             }
 
             Protocol.PHASE_DONE -> {
+                watchFinished?.complete(true)
                 watchCancellable = false
                 setTransfer(100, getString(R.string.transfer_done))
                 setInstall(100, getString(R.string.install_done))
@@ -303,6 +342,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
                     }
                     return
                 }
+                watchFinished?.complete(false)
                 watchCancellable = false
                 installText.text = getString(R.string.failed)
                 setWatchBusy(false)
@@ -314,6 +354,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
                     suppressCancelText = true
                     return
                 }
+                watchFinished?.complete(false)
                 watchCancellable = false
                 if (transferProgress.progress < 100) transferText.text = getString(R.string.stopped)
                 installText.text = getString(R.string.stopped)
@@ -353,25 +394,27 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
 
     private fun handleIncomingIntent(intent: Intent?) {
         if (intent?.action == ACTION_RELAYED_FILE) {
-            val file = intent.getStringExtra(EXTRA_RELAYED_PATH)?.let { File(it) }
-            if (file != null && file.exists()) {
-                setSelectedFile(Uri.fromFile(file), file.name, file.length())
+            val files = RelayService.batchFiles(this)
+            if (files.isNotEmpty()) {
+                setSelectedFiles(files.map { Picked(Uri.fromFile(it), it.name, it.length()) })
                 statusText.text = getString(R.string.relay_received)
             }
             return
         }
-        val uri = when (intent?.action) {
-            Intent.ACTION_SEND -> IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
-            Intent.ACTION_VIEW -> intent.data
-            else -> null
+        val uris: List<Uri> = when (intent?.action) {
+            Intent.ACTION_SEND -> listOfNotNull(IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java))
+            Intent.ACTION_SEND_MULTIPLE ->
+                IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri::class.java).orEmpty()
+            Intent.ACTION_VIEW -> listOfNotNull(intent.data)
+            else -> emptyList()
         }
-        if (uri != null) setSelectedFile(uri)
+        if (uris.isNotEmpty()) setSelectedFiles(uris.map(::describe))
     }
 
-    private fun setSelectedFile(uri: Uri, knownName: String? = null, knownSize: Long = -1L) {
-        var name: String? = knownName
-        var size = knownSize
-        if (knownName == null) try {
+    private fun describe(uri: Uri): Picked {
+        var name: String? = null
+        var size = -1L
+        try {
             contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)
                 ?.use { c ->
                     if (c.moveToFirst()) {
@@ -385,12 +428,23 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
             // Some providers don't support queries; fall back to the URI path.
         }
 
-        selectedUri = uri
-        selectedName = name ?: uri.lastPathSegment?.substringAfterLast('/') ?: "app.apk"
-        selectedSize = size
+        return Picked(uri, name ?: uri.lastPathSegment?.substringAfterLast('/') ?: "file", size)
+    }
 
-        val sizeText = if (size >= 0) " (${Formatter.formatShortFileSize(this, size)})" else ""
-        fileText.text = "$selectedName$sizeText"
+    private fun setSelectedFiles(files: List<Picked>) {
+        if (files.isEmpty()) return
+        picked = files
+        selectedUri = files[0].uri
+        selectedName = files[0].name
+        selectedSize = if (files.all { it.size >= 0 }) files.sumOf { it.size } else -1L
+
+        val sizeText = if (selectedSize >= 0) " (${Formatter.formatShortFileSize(this, selectedSize)})" else ""
+        fileText.text = if (files.size == 1) {
+            "$selectedName$sizeText"
+        } else {
+            "${files.size} files$sizeText\n" + files.take(6).joinToString("\n") { "• ${it.name}" } +
+                if (files.size > 6) "\n• …" else ""
+        }
 
         installSwitch.isChecked = true
         methodChosenByUser = false
@@ -403,7 +457,12 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
     }
 
     /** APKs are installed (unless the switch is off); everything else is saved to the watch's Downloads. */
-    private fun installSelected(): Boolean = isApk(selectedName) && installSwitch.isChecked
+    private fun installSelected(): Boolean = installFor(selectedName)
+
+    private fun installFor(name: String): Boolean = isApk(name) && installSwitch.isChecked
+
+    /** Whether any chosen file will be saved rather than installed (needs watch app 5.0). */
+    private fun needsSaving(): Boolean = picked.any { !installFor(it.name) }
 
     /** Saving non-APK files needs watch app 5.0; older ones only understand APK installs. */
     private fun watchCanSaveFiles(): Boolean = (watchVersionCode ?: 0) >= Protocol.MIN_WATCH_VERSION_FOR_FILES
@@ -450,9 +509,13 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
     private fun updateSelectionUi() {
         updateMethodUi()
         val hasFile = selectedUri != null
-        installSwitch.visibility = if (hasFile && isApk(selectedName)) View.VISIBLE else View.GONE
-        sendButton.text = getString(if (installSelected()) R.string.send else R.string.send_file)
-        if (hasFile && !installSelected() && targetNode != null && !watchCanSaveFiles()) {
+        installSwitch.visibility = if (hasFile && picked.any { isApk(it.name) }) View.VISIBLE else View.GONE
+        sendButton.text = when {
+            picked.size > 1 -> getString(R.string.send_many, picked.size)
+            installSelected() -> getString(R.string.send)
+            else -> getString(R.string.send_file)
+        }
+        if (hasFile && needsSaving() && targetNode != null && !watchCanSaveFiles()) {
             statusText.text = if (watchVersionCode == null && !watchVersionUnknown) {
                 "Checking the watch app version…"
             } else {
@@ -557,12 +620,49 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         val open: () -> InputStream,
     )
 
+    private fun sourceFor(file: Picked) = SendSource(file.name, file.size, installFor(file.name)) {
+        contentResolver.openInputStream(file.uri) ?: throw FileNotFoundException("Can't open ${file.name}")
+    }
+
     private fun sendSelectedFile() {
-        val uri = selectedUri ?: return
+        val files = picked
+        if (files.isEmpty()) return
         val useWifi = methodGroup.checkedButtonId == R.id.methodWifi && wifiAllowed()
-        sendToWatch(SendSource(selectedName, selectedSize, installSelected()) {
-            contentResolver.openInputStream(uri) ?: throw FileNotFoundException("Can't open $uri")
-        }, useWifi)
+        if (files.size == 1) {
+            sendToWatch(sourceFor(files[0]), useWifi)
+            return
+        }
+
+        // Several files: send one, wait for the watch to finish saving/installing it, then the next.
+        queueActive = true
+        userCancelled = false
+        updateControls()
+        queueJob = lifecycleScope.launch {
+            var sent = 0
+            try {
+                for ((index, file) in files.withIndex()) {
+                    transferLabel.text = getString(R.string.transfer_label_many, index + 1, files.size)
+                    val finished = CompletableDeferred<Boolean>()
+                    watchFinished = finished
+                    lastSendFailed = false
+                    sendToWatch(sourceFor(file), useWifi && file.size > 0)
+                    sendJob?.join()
+                    if (userCancelled || lastSendFailed) break
+                    if (!finished.await()) break
+                    sent++
+                }
+            } finally {
+                watchFinished = null
+                queueActive = false
+                transferLabel.text = getString(R.string.transfer_label)
+                if (sent == files.size) {
+                    statusText.text = getString(R.string.sent_all, files.size)
+                } else if (!userCancelled) {
+                    statusText.text = getString(R.string.sent_some, sent, files.size) + "\n" + statusText.text
+                }
+                updateControls()
+            }
+        }
     }
 
     /** Pushes the watch app bundled in this phone app to the watch, which installs it over itself. */
@@ -624,6 +724,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
                     watchCancellable = false
                 } else {
                     // If the watch stopped it, its PHASE_CANCELLED message replaces this text.
+                    lastSendFailed = true
                     statusText.text = "Transfer failed: ${e.message ?: e.javaClass.simpleName}"
                     transferText.text = getString(R.string.failed)
                 }
@@ -793,6 +894,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
                 currentWifiServer?.close()
                 sendJob?.cancel()
             }
+            queueJob?.cancel()
         }
     }
 
@@ -806,6 +908,8 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         if (busy) {
             watchBusyTimeout = lifecycleScope.launch {
                 delay(WATCH_SILENCE_TIMEOUT_MS)
+                // Older watch apps don't report "done"; assume it finished and move on.
+                watchFinished?.complete(true)
                 watchBusy = false
                 updateControls()
             }
@@ -815,21 +919,21 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
 
     /** Keeps the screen on and blocks back while anything is in flight. */
     private fun updateControls() {
-        val busy = sending || watchBusy
+        val busy = sending || watchBusy || queueActive
         if (busy) {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         } else {
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
         backBlocker.isEnabled = busy
-        val canStop = sending || (watchBusy && watchCancellable)
+        val canStop = sending || queueActive || (watchBusy && watchCancellable)
         if (canStop && stopButton.visibility != View.VISIBLE) stopButton.isEnabled = true
         stopButton.visibility = if (canStop) View.VISIBLE else View.GONE
         pickButton.isEnabled = !busy
         updateWatchButton.isEnabled = !busy && targetNode != null
         findWatchButton.isEnabled = !busy
         sendButton.isEnabled = !busy && selectedUri != null && targetNode != null &&
-            (installSelected() || watchCanSaveFiles())
+            (!needsSaving() || watchCanSaveFiles())
         installSwitch.isEnabled = !busy
         methodBluetooth.isEnabled = !busy
         methodWifi.isEnabled = !busy && wifiAllowed()
@@ -837,7 +941,6 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
 
     companion object {
         const val ACTION_RELAYED_FILE = "com.evanrobinson.watchapk.RELAYED_FILE"
-        const val EXTRA_RELAYED_PATH = "relayed_path"
         private const val TAG = "WatchApkInstaller"
         private const val BUFFER_SIZE = 64 * 1024
         private const val WATCH_SILENCE_TIMEOUT_MS = 120_000L

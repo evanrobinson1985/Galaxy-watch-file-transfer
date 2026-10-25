@@ -22,9 +22,11 @@ import java.io.FileNotFoundException
 
 /**
  * What the app shows inside Secure Folder (or a work profile): the watch can't be reached from
- * there, so this hands the shared file to the normal copy of the app, which sends it on.
+ * there, so this hands the shared files to the normal copy of the app, which sends them on.
  */
 class RelayActivity : AppCompatActivity() {
+
+    private class Item(val uri: Uri, val name: String, val size: Long)
 
     private lateinit var fileText: TextView
     private lateinit var statusText: TextView
@@ -32,13 +34,11 @@ class RelayActivity : AppCompatActivity() {
     private lateinit var sendButton: MaterialButton
     private lateinit var pickButton: MaterialButton
 
-    private var uri: Uri? = null
-    private var name = "file"
-    private var size = -1L
+    private var items: List<Item> = emptyList()
     private var sending = false
 
-    private val pick = registerForActivityResult(ActivityResultContracts.OpenDocument()) { picked ->
-        if (picked != null) select(picked, autoSend = true)
+    private val pick = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { picked ->
+        if (picked.isNotEmpty()) select(picked, autoSend = true)
     }
 
     private val backBlocker = object : OnBackPressedCallback(false) {
@@ -66,20 +66,21 @@ class RelayActivity : AppCompatActivity() {
     }
 
     private fun handle(intent: Intent?) {
-        val shared = when (intent?.action) {
-            Intent.ACTION_SEND -> IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
-            Intent.ACTION_VIEW -> intent.data
-            else -> null
+        val shared: List<Uri> = when (intent?.action) {
+            Intent.ACTION_SEND -> listOfNotNull(IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java))
+            Intent.ACTION_SEND_MULTIPLE ->
+                IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri::class.java).orEmpty()
+            Intent.ACTION_VIEW -> listOfNotNull(intent.data)
+            else -> emptyList()
         }
-        if (shared != null) select(shared, autoSend = true)
+        if (shared.isNotEmpty()) select(shared, autoSend = true)
     }
 
-    private fun select(picked: Uri, autoSend: Boolean) {
-        uri = picked
-        name = "file"
-        size = -1L
+    private fun describe(uri: Uri): Item {
+        var name = uri.lastPathSegment?.substringAfterLast('/') ?: "file"
+        var size = -1L
         runCatching {
-            contentResolver.query(picked, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)
                 ?.use { c ->
                     if (c.moveToFirst()) {
                         c.getColumnIndex(OpenableColumns.DISPLAY_NAME).takeIf { it >= 0 }?.let { name = c.getString(it) ?: name }
@@ -87,32 +88,55 @@ class RelayActivity : AppCompatActivity() {
                     }
                 }
         }
-        val sizeText = if (size >= 0) " (${Formatter.formatShortFileSize(this, size)})" else ""
-        fileText.text = "$name$sizeText"
+        return Item(uri, name, size)
+    }
+
+    private fun select(uris: List<Uri>, autoSend: Boolean) {
+        items = uris.map(::describe)
+        val total = items.sumOf { it.size.coerceAtLeast(0) }
+        fileText.text = if (items.size == 1) {
+            val item = items[0]
+            item.name + if (item.size >= 0) " (${Formatter.formatShortFileSize(this, item.size)})" else ""
+        } else {
+            "${items.size} files (${Formatter.formatShortFileSize(this, total)})\n" +
+                items.take(6).joinToString("\n") { "• ${it.name}" } +
+                if (items.size > 6) "\n• …" else ""
+        }
         sendButton.isEnabled = true
         if (autoSend) send()
     }
 
     private fun send() {
-        val source = uri ?: return
+        val batch = items
+        if (batch.isEmpty()) return
         setBusy(true)
-        statusText.text = getString(R.string.relay_sending)
+        val total = batch.sumOf { it.size.coerceAtLeast(0) }
         lifecycleScope.launch {
             try {
-                withContext(Dispatchers.IO) {
-                    val input = contentResolver.openInputStream(source) ?: throw FileNotFoundException("Can't open $name")
-                    input.use {
-                        var lastPercent = -1
-                        SecureFolderRelay.send(name, size, it) { done ->
-                            if (size > 0) {
-                                val percent = (done * 100 / size).toInt()
-                                if (percent != lastPercent) {
-                                    lastPercent = percent
-                                    runOnUiThread { progress.setProgressCompat(percent, true) }
+                var doneBefore = 0L
+                batch.forEachIndexed { index, item ->
+                    statusText.text = if (batch.size == 1) {
+                        getString(R.string.relay_sending)
+                    } else {
+                        getString(R.string.relay_sending_many, index + 1, batch.size)
+                    }
+                    withContext(Dispatchers.IO) {
+                        val input = contentResolver.openInputStream(item.uri)
+                            ?: throw FileNotFoundException("Can't open ${item.name}")
+                        input.use {
+                            var lastPercent = -1
+                            SecureFolderRelay.send(index, batch.size, item.name, item.size, it) { done ->
+                                if (total > 0) {
+                                    val percent = ((doneBefore + done) * 100 / total).toInt()
+                                    if (percent != lastPercent) {
+                                        lastPercent = percent
+                                        runOnUiThread { progress.setProgressCompat(percent, true) }
+                                    }
                                 }
                             }
                         }
                     }
+                    doneBefore += item.size.coerceAtLeast(0)
                 }
                 progress.setProgressCompat(100, true)
                 statusText.text = getString(R.string.relay_done)
@@ -134,7 +158,7 @@ class RelayActivity : AppCompatActivity() {
         } else {
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
-        sendButton.isEnabled = !busy && uri != null
+        sendButton.isEnabled = !busy && items.isNotEmpty()
         pickButton.isEnabled = !busy
     }
 }

@@ -13,6 +13,15 @@ Supported files to install: plain `.apk`, and split bundles `.apks` / `.xapk` (a
 
 The transfer runs over the Wearable Data Layer (the same Bluetooth/Wi-Fi link Galaxy Wearable uses), so you don't need to set up Wi-Fi debugging every time you want to install something.
 
+## What's new in 7.2
+
+- **Send several files at once.** **Choose files** now lets you pick more than one, and you can share several files to the app. They're sent one after another. The app waits for the watch to finish saving or installing each one before sending the next, and shows "Transfer to watch (2 of 5)".
+- **Secure Folder handoff fixes:**
+  - The normal app now listens on both of the phone's internal addresses (127.0.0.1 and ::1). Previously the two copies could end up on different ones, which caused "Connection refused".
+  - Under **Allow sending from Secure Folder** there's now a status line, for example "Listening for Secure Folder files ✅", or the reason it couldn't start.
+  - Several files can be handed over from Secure Folder at once.
+  - **Update both copies** (inside and outside Secure Folder). The handoff format changed, and a mismatched pair reports that it needs updating.
+
 ## What's new in 7.0
 
 - **Share from Secure Folder.** Secure Folder works like a separate phone inside your phone. Its share menu only lists apps installed *inside* Secure Folder, and those apps can't reach your watch. So this works in two steps:

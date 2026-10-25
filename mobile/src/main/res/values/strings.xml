@@ -2,7 +2,7 @@
     <string name="app_name">Watch APK Installer</string>
     <string name="share_label">Send to watch</string>
     <string name="find_watch">Find watch</string>
-    <string name="pick_apk">Choose file</string>
+    <string name="pick_apk">Choose files</string>
     <string name="send">Send to watch &amp; install</string>
     <string name="send_file">Send to watch</string>
     <string name="install_switch">Install on the watch (off: just save the APK)</string>
@@ -48,4 +48,14 @@
     <string name="relay_done">Done ✅ Now tap the \"Tap to send to watch\" notification (or open Watch APK Installer outside Secure Folder).</string>
     <string name="relay_unreachable">Couldn\'t reach Watch APK Installer outside Secure Folder (%1$s). Open it there, turn on \"Allow sending from Secure Folder\", then tap Hand over again.</string>
     <string name="wifi_last_problem">Last Wi‑Fi attempt failed: %1$s</string>
+    <string name="send_many">Send %1$d files to watch</string>
+    <string name="transfer_label_many">Transfer to watch (%1$d of %2$d)</string>
+    <string name="sent_all">All %1$d files sent ✅</string>
+    <string name="sent_some">Sent %1$d of %2$d files.</string>
+    <string name="relay_ready_many">%1$d files from Secure Folder</string>
+    <string name="relay_sending_many">Handing over file %1$d of %2$d…</string>
+    <string name="relay_status_listening">Listening for Secure Folder files ✅ (%1$s)</string>
+    <string name="relay_status_starting">Starting…</string>
+    <string name="relay_status_off">Not running. Turn the switch off and on again.</string>
+    <string name="relay_status_error">Couldn\'t start: %1$s</string>
 </resources>

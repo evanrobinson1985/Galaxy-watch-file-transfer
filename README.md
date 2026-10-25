@@ -13,6 +13,15 @@ Supported files to install: plain `.apk`, and split bundles `.apks` / `.xapk` (a
 
 The transfer runs over the Wearable Data Layer (the same Bluetooth/Wi-Fi link Galaxy Wearable uses), so you don't need to set up Wi-Fi debugging every time you want to install something.
 
+## What's new in 8.0
+
+- **Send apps that are already installed on your phone.** Tap **Choose installed apps** for a list of every app on the phone.
+  - Search by name or package, and turn on **Show system apps** to include system apps.
+  - Tick as many apps as you like, then tap **Use N apps**. The phone copies out each app's APK. Apps split into several APKs are packed into an `.apks` bundle, which the watch installs as one.
+  - Send them as usual (Bluetooth or Wi‑Fi, one after another). Everything else works the same.
+- **Not every phone app works on a watch.** The install fails or the app won't open if it needs phone-only hardware (like telephony), a newer Android version than the watch has, or a CPU type the watch doesn't support. Apps built with Wear OS support work best.
+- The app now has permission to see all installed apps (`QUERY_ALL_PACKAGES`), which Android requires for listing them.
+
 ## What's new in 7.2
 
 - **Send several files at once.** **Choose files** now lets you pick more than one, and you can share several files to the app. They're sent one after another. The app waits for the watch to finish saving or installing each one before sending the next, and shows "Transfer to watch (2 of 5)".

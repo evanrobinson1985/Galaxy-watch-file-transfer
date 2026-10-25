@@ -58,4 +58,19 @@
     <string name="relay_status_starting">Starting…</string>
     <string name="relay_status_off">Not running. Turn the switch off and on again.</string>
     <string name="relay_status_error">Couldn\'t start: %1$s</string>
+    <string name="pick_apps">Choose installed apps</string>
+    <string name="pick_apps_title">Send installed apps</string>
+    <string name="search_apps">Search apps</string>
+    <string name="show_system_apps">Show system apps</string>
+    <string name="loading_apps">Loading apps…</string>
+    <string name="no_apps_match">No apps match.</string>
+    <string name="pick_apps_none">Select apps to send</string>
+    <plurals name="pick_apps_done">
+        <item quantity="one">Use %1$d app</item>
+        <item quantity="other">Use %1$d apps</item>
+    </plurals>
+    <string name="app_split_count">%1$d APKs</string>
+    <string name="app_system">system</string>
+    <string name="preparing_apps">Preparing app %1$d of %2$d…</string>
+    <string name="apps_ready">Ready to send. Phone apps only run on the watch if they support Wear OS; others may fail to install or won\'t open.</string>
 </resources>

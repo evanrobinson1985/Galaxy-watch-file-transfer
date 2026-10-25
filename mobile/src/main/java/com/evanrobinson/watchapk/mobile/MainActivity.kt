@@ -57,6 +57,8 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
     private lateinit var watchAppText: TextView
     private lateinit var updateWatchButton: MaterialButton
     private lateinit var pickButton: MaterialButton
+    private lateinit var pickAppsButton: MaterialButton
+    private var preparingApps = false
     private lateinit var sendButton: MaterialButton
     private lateinit var installSwitch: MaterialSwitch
     private lateinit var installSection: View
@@ -138,6 +140,11 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
 
     private val remoteActivityHelper by lazy { RemoteActivityHelper(this) }
 
+    private val pickApps = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val packages = result.data?.getStringArrayExtra(AppPickerActivity.EXTRA_PACKAGES)
+        if (result.resultCode == RESULT_OK && !packages.isNullOrEmpty()) prepareApps(packages.toList())
+    }
+
     private val pickApk = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) setSelectedFiles(uris.map(::describe))
     }
@@ -171,6 +178,8 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         watchAppText = findViewById(R.id.watchAppText)
         updateWatchButton = findViewById(R.id.updateWatchButton)
         pickButton = findViewById(R.id.pickButton)
+        pickAppsButton = findViewById(R.id.pickAppsButton)
+        pickAppsButton.setOnClickListener { pickApps.launch(Intent(this, AppPickerActivity::class.java)) }
         sendButton = findViewById(R.id.sendButton)
         installSwitch = findViewById(R.id.installSwitch)
         installSection = findViewById(R.id.installSection)
@@ -409,6 +418,31 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
             else -> emptyList()
         }
         if (uris.isNotEmpty()) setSelectedFiles(uris.map(::describe))
+    }
+
+    /** Copies out the chosen apps' APKs (bundling split APKs as .apks) and selects them. */
+    private fun prepareApps(packages: List<String>) {
+        preparingApps = true
+        updateControls()
+        lifecycleScope.launch {
+            val outDir = java.io.File(cacheDir, "apps")
+            val files = mutableListOf<Picked>()
+            val errors = mutableListOf<String>()
+            withContext(Dispatchers.IO) { outDir.deleteRecursively() }
+            for ((index, pkg) in packages.withIndex()) {
+                statusText.text = getString(R.string.preparing_apps, index + 1, packages.size)
+                try {
+                    val (file, name) = withContext(Dispatchers.IO) { InstalledApps.export(applicationContext, pkg, outDir) }
+                    files += Picked(Uri.fromFile(file), name, file.length())
+                } catch (e: Exception) {
+                    errors += "$pkg: ${e.message ?: e.javaClass.simpleName}"
+                }
+            }
+            preparingApps = false
+            if (files.isNotEmpty()) setSelectedFiles(files)
+            statusText.text = (listOf(getString(R.string.apps_ready)) + errors.map { "Skipped $it" }).joinToString("\n")
+            updateControls()
+        }
     }
 
     private fun describe(uri: Uri): Picked {
@@ -929,10 +963,11 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         val canStop = sending || queueActive || (watchBusy && watchCancellable)
         if (canStop && stopButton.visibility != View.VISIBLE) stopButton.isEnabled = true
         stopButton.visibility = if (canStop) View.VISIBLE else View.GONE
-        pickButton.isEnabled = !busy
+        pickButton.isEnabled = !busy && !preparingApps
+        pickAppsButton.isEnabled = !busy && !preparingApps
         updateWatchButton.isEnabled = !busy && targetNode != null
         findWatchButton.isEnabled = !busy
-        sendButton.isEnabled = !busy && selectedUri != null && targetNode != null &&
+        sendButton.isEnabled = !busy && !preparingApps && selectedUri != null && targetNode != null &&
             (!needsSaving() || watchCanSaveFiles())
         installSwitch.isEnabled = !busy
         methodBluetooth.isEnabled = !busy

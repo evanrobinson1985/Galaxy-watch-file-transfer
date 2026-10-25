@@ -4,6 +4,9 @@
     <!-- Fast transfers: a one-shot local server the watch downloads from over Wi-Fi. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- "Choose installed apps": list every app, including system apps. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
     <!-- Secure Folder bridge (RelayService). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
@@ -48,6 +51,10 @@
                 <data android:mimeType="application/vnd.android.package-archive" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".AppPickerActivity"
+            android:exported="false" />
+
         <activity
             android:name=".RelayActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"

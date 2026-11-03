@@ -27,24 +27,40 @@ val copyWatchApk = tasks.register<CopyWatchApkTask>("copyWatchApk") {
 
 androidComponents {
     onVariants { variant ->
-        variant.sources.assets?.addGeneratedSourceDirectory(copyWatchApk, CopyWatchApkTask::outputDir)
+        // Only the GitHub edition carries the watch app; on Play the watch gets it from Play.
+        if (variant.flavorName == "github") {
+            variant.sources.assets?.addGeneratedSourceDirectory(copyWatchApk, CopyWatchApkTask::outputDir)
+        }
     }
 }
 
+/**
+ * Google Play upload key, from environment variables (CI secrets) or ~/.gradle/gradle.properties.
+ * It must never be committed. Without it, Play release builds come out unsigned.
+ */
+fun uploadSetting(env: String, prop: String): String? =
+    providers.environmentVariable(env).orNull?.takeIf { it.isNotBlank() }
+        ?: providers.gradleProperty(prop).orNull?.takeIf { it.isNotBlank() }
+
+val uploadKeystore = uploadSetting("UPLOAD_KEYSTORE", "uploadKeystore")
+
+
 android {
     namespace = "com.evanrobinson.watchapk.mobile"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         // The phone and watch apps MUST share the same applicationId and signing key,
         // otherwise the Wearable Data Layer refuses to connect them.
         applicationId = "com.evanrobinson.watchapk"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = (property("appVersionCode") as String).toInt()
         versionName = property("appVersionName") as String
 
-        buildConfigField("int", "WATCH_VERSION_CODE", property("appVersionCode") as String)
+        val wearVersionCode = (property("appVersionCode") as String).toInt() +
+            (property("wearVersionCodeOffset") as String).toInt()
+        buildConfigField("int", "WATCH_VERSION_CODE", wearVersionCode.toString())
         buildConfigField("String", "WATCH_VERSION_NAME", "\"${property("appVersionName")}\"")
     }
 
@@ -64,12 +80,37 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+        if (uploadKeystore != null) {
+            create("upload") {
+                storeFile = file(uploadKeystore)
+                storePassword = uploadSetting("UPLOAD_KEYSTORE_PASSWORD", "uploadKeystorePassword")
+                keyAlias = uploadSetting("UPLOAD_KEY_ALIAS", "uploadKeyAlias")
+                keyPassword = uploadSetting("UPLOAD_KEY_PASSWORD", "uploadKeyPassword")
+            }
+        }
+    }
+
+    flavorDimensions += "store"
+    productFlavors {
+        // Sideloaded from GitHub: updates itself from GitHub Releases, bundles the watch app,
+        // lists all apps, has the Secure Folder bridge. Signed with the shared key in the repo.
+        create("github") {
+            dimension = "store"
+            isDefault = true
+            signingConfig = signingConfigs.getByName("debug")
+        }
+        // Google Play: only Play-compliant features; release builds signed with the upload key.
+        create("play") {
+            dimension = "store"
+            signingConfig = signingConfigs.findByName("upload")
+        }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 

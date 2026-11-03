@@ -13,6 +13,14 @@ Supported files to install: plain `.apk`, and split bundles `.apks` / `.xapk` (a
 
 The transfer runs over the Wearable Data Layer (the same Bluetooth/Wi-Fi link Galaxy Wearable uses), so you don't need to set up Wi-Fi debugging every time you want to install something.
 
+## Editions: GitHub and Google Play
+
+From 9.0, the app is built in two editions from the same code:
+- **GitHub edition:** the APKs on the [Releases](https://github.com/evanrobinson1985/Galaxy-watch-file-transfer/releases) page, with every feature described below.
+- **Google Play edition:** leaves out what Play policy doesn't allow. That's updating itself from GitHub, pushing the watch app from the phone, listing every installed app including system apps, and the Secure Folder bridge.
+
+See [`play/README.md`](play/README.md) for how to publish it, [`play/listing.md`](play/listing.md) for the store text and graphics, [`play/policy.md`](play/policy.md) for the policy and Data safety answers, and [`PRIVACY.md`](PRIVACY.md) for the privacy policy.
+
 ## What's new in 8.2
 
 - **Wi‑Fi first, always.** **Wi‑Fi (fast)** is now the default for every transfer, whatever the file size, and also for watch-app updates. If the watch can't join Wi‑Fi or reach the phone, the transfer switches to Bluetooth automatically.

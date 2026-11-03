@@ -3,17 +3,29 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+/**
+ * Google Play upload key, from environment variables (CI secrets) or ~/.gradle/gradle.properties.
+ * It must never be committed. Without it, Play release builds come out unsigned.
+ */
+fun uploadSetting(env: String, prop: String): String? =
+    providers.environmentVariable(env).orNull?.takeIf { it.isNotBlank() }
+        ?: providers.gradleProperty(prop).orNull?.takeIf { it.isNotBlank() }
+
+val uploadKeystore = uploadSetting("UPLOAD_KEYSTORE", "uploadKeystore")
+
 android {
     namespace = "com.evanrobinson.watchapk.wear"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         // The phone and watch apps MUST share the same applicationId and signing key,
         // otherwise the Wearable Data Layer refuses to connect them.
         applicationId = "com.evanrobinson.watchapk"
         minSdk = 30
-        targetSdk = 35
-        versionCode = (property("appVersionCode") as String).toInt()
+        targetSdk = 36
+        // Different from the phone app's code, as Google Play requires for each form factor.
+        versionCode = (property("appVersionCode") as String).toInt() +
+            (property("wearVersionCodeOffset") as String).toInt()
         versionName = property("appVersionName") as String
     }
 
@@ -28,12 +40,24 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+        if (uploadKeystore != null) {
+            create("upload") {
+                storeFile = file(uploadKeystore)
+                storePassword = uploadSetting("UPLOAD_KEYSTORE_PASSWORD", "uploadKeystorePassword")
+                keyAlias = uploadSetting("UPLOAD_KEY_ALIAS", "uploadKeyAlias")
+                keyPassword = uploadSetting("UPLOAD_KEY_PASSWORD", "uploadKeyPassword")
+            }
+        }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            // Release builds are for Google Play: upload key, or unsigned without it. (The
+            // GitHub edition bundles the debug build, signed with the shared key.)
+            signingConfig = signingConfigs.findByName("upload")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 

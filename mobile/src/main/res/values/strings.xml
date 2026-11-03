@@ -89,4 +89,9 @@
     <string name="watch_update_title">Update the watch app?</string>
     <string name="watch_update_message">Your watch has %1$s of the watch app. This phone app includes v%2$s. Update it now? Keep the watch near the phone.</string>
     <string name="an_older_version">an older version</string>
+    <string name="watch_app_play_store">Get the latest watch app (Play Store)</string>
+    <string name="watch_update_message_play">Your watch has %1$s of the watch app; v%2$s is available. Open its Play Store page on the watch now?</string>
+    <string name="play_store_opened_on_watch">Opened the Play Store on your watch.</string>
+    <string name="play_store_open_failed">Couldn\'t open the Play Store on your watch. Open it there and search for Watch APK Installer.</string>
+    <string name="apps_list_limited">Only apps you can open from the launcher are listed.</string>
 </resources>

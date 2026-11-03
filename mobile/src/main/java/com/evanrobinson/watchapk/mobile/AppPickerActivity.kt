@@ -56,6 +56,9 @@ class AppPickerActivity : AppCompatActivity() {
             override fun afterTextChanged(s: Editable?) = applyFilter()
         })
         systemSwitch.setOnCheckedChangeListener { _, _ -> applyFilter() }
+        if (Edition.IS_PLAY) {
+            systemSwitch.text = getString(R.string.show_system_apps) + "\n" + getString(R.string.apps_list_limited)
+        }
         doneButton.setOnClickListener {
             setResult(RESULT_OK, Intent().putExtra(EXTRA_PACKAGES, selected.toTypedArray()))
             finish()

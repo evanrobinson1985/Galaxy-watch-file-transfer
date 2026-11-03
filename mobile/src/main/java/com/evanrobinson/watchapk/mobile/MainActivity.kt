@@ -61,8 +61,8 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
     private lateinit var pickButton: MaterialButton
     private lateinit var pickAppsButton: MaterialButton
 
-    /** Waiting for the user to allow installs from this app before updating it. */
-    private var pendingRelease: Updater.Release? = null
+    /** onCreate finished setting up the screen (it doesn't, inside Secure Folder). */
+    private var uiReady = false
     private var watchUpdatePromptShown = false
     private var preparingApps = false
     private lateinit var sendButton: MaterialButton
@@ -80,8 +80,6 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
     private lateinit var installProgress: LinearProgressIndicator
     private lateinit var installText: TextView
     private lateinit var stopButton: MaterialButton
-    private lateinit var relaySwitch: MaterialSwitch
-    private lateinit var relayStatusText: TextView
     private lateinit var transferLabel: TextView
 
     /** Files chosen to send; the selected* fields below describe the first one / the total. */
@@ -154,9 +152,6 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         if (uris.isNotEmpty()) setSelectedFiles(uris.map(::describe))
     }
 
-    private val requestNotifications =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { startRelayIfEnabled() }
-
     private val backBlocker = object : OnBackPressedCallback(false) {
         override fun handleOnBackPressed() {
             Toast.makeText(this@MainActivity, R.string.busy_toast, Toast.LENGTH_SHORT).show()
@@ -165,15 +160,8 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (SecureFolderRelay.isInSecondaryProfile(this)) {
-            // Inside Secure Folder the watch can't be reached; hand files to the normal copy instead.
-            startActivity(
-                Intent(intent).setClass(this, RelayActivity::class.java)
-                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
-            )
-            finish()
-            return
-        }
+        // GitHub edition inside Secure Folder: hands over to the relay screen instead.
+        if (Edition.redirectSecondaryProfile(this)) return
         setContentView(R.layout.activity_main)
 
         watchStatus = findViewById(R.id.watchStatus)
@@ -206,37 +194,20 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         installProgress = findViewById(R.id.installProgress)
         installText = findViewById(R.id.installText)
         stopButton = findViewById(R.id.stopButton)
-        relaySwitch = findViewById(R.id.relaySwitch)
-        relayStatusText = findViewById(R.id.relayStatusText)
         transferLabel = findViewById(R.id.transferLabel)
-        relaySwitch.isChecked = RelayService.isEnabled(this)
-        relaySwitch.setOnCheckedChangeListener { _, checked ->
-            RelayService.setEnabled(this, checked)
-            renderRelayStatus(RelayService.status.value)
-            if (!checked) {
-                RelayService.stop(this)
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-            ) {
-                // Needed for the "Tap to send to watch" notification.
-                requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
-            } else {
-                startRelayIfEnabled()
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                RelayService.status.collect { renderRelayStatus(it) }
-            }
-        }
-            }
-        }
-        startRelayIfEnabled()
+        Edition.setUpSecureFolderBridge(
+            this,
+            findViewById(R.id.relaySwitch),
+            findViewById(R.id.relaySwitchHint),
+            findViewById(R.id.relayStatusText),
+        )
 
         onBackPressedDispatcher.addCallback(this, backBlocker)
         findWatchButton.setOnClickListener { findWatch() }
         // APK bundles often come through with generic MIME types, so accept anything.
         pickButton.setOnClickListener { pickApk.launch(arrayOf("*/*")) }
         sendButton.setOnClickListener { sendSelectedFile() }
-        updateWatchButton.setOnClickListener { sendWatchAppUpdate() }
+        updateWatchButton.setOnClickListener { updateWatchApp() }
         stopButton.setOnClickListener { stopTransfer() }
 
         // Listen for the whole lifetime of the screen so progress isn't missed while paused.
@@ -245,112 +216,8 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         handleIncomingIntent(intent)
         findWatch()
 
-        findViewById<MaterialButton>(R.id.checkUpdatesButton).apply {
-            text = getString(R.string.check_updates, BuildConfig.VERSION_NAME)
-            setOnClickListener { checkForUpdates(manual = true) }
-        }
-        if (Updater.shouldAutoCheck(this)) checkForUpdates(manual = false)
-    }
-
-    override fun onResume() {
-        super.onResume()
-        // Back from "Install unknown apps" settings: carry on with the update if now allowed.
-        val release = pendingRelease
-        if (release != null && packageManager.canRequestPackageInstalls()) startUpdate(release)
-    }
-
-    // --- Updates from GitHub ---------------------------------------------------------------
-
-    private fun checkForUpdates(manual: Boolean) {
-        lifecycleScope.launch {
-            val release = try {
-                withContext(Dispatchers.IO) { Updater.fetchLatest(applicationContext) }
-            } catch (e: Exception) {
-                if (manual) toast(getString(R.string.update_check_failed, e.message ?: e.javaClass.simpleName))
-                return@launch
-            }
-            if (release != null && release.versionCode > BuildConfig.VERSION_CODE) {
-                showUpdateDialog(release)
-            } else if (manual) {
-                toast(getString(R.string.up_to_date, BuildConfig.VERSION_NAME))
-            }
-        }
-    }
-
-    private fun showUpdateDialog(release: Updater.Release) {
-        // Don't interrupt a transfer; the next check will ask again.
-        if (isFinishing || sending || queueActive) return
-        val notes = release.notes.take(600).trim()
-        MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.update_title)
-            .setMessage(
-                getString(R.string.update_message, release.versionName, BuildConfig.VERSION_NAME) +
-                    if (notes.isNotEmpty()) "\n\n$notes" else "",
-            )
-            .setPositiveButton(R.string.update_now) { _, _ -> startUpdate(release) }
-            .setNegativeButton(R.string.remind_later) { _, _ -> Updater.remindLater(this) }
-            .setCancelable(false)
-            .show()
-    }
-
-    private fun startUpdate(release: Updater.Release) {
-        if (!packageManager.canRequestPackageInstalls()) {
-            pendingRelease = release
-            MaterialAlertDialogBuilder(this)
-                .setTitle(R.string.update_title)
-                .setMessage(R.string.update_allow_installs)
-                .setPositiveButton(R.string.open_settings) { _, _ ->
-                    runCatching {
-                        startActivity(
-                            Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")),
-                        )
-                    }
-                }
-                .setNegativeButton(android.R.string.cancel) { _, _ -> pendingRelease = null }
-                .show()
-            return
-        }
-        pendingRelease = null
-
-        val view = layoutInflater.inflate(R.layout.dialog_update_progress, null)
-        val bar = view.findViewById<LinearProgressIndicator>(R.id.updateProgress)
-        val label = view.findViewById<TextView>(R.id.updateProgressText)
-        var cancelled = false
-        val dialog = MaterialAlertDialogBuilder(this)
-            .setTitle(getString(R.string.update_downloading, release.versionName))
-            .setView(view)
-            .setCancelable(false)
-            .setNegativeButton(android.R.string.cancel) { _, _ -> cancelled = true }
-            .show()
-
-        lifecycleScope.launch {
-            try {
-                val apk = java.io.File(cacheDir, "update/WatchApkInstaller-phone.apk")
-                withContext(Dispatchers.IO) {
-                    var lastPercent = -1
-                    Updater.download(release, apk, { cancelled }) { done, total ->
-                        val percent = if (total > 0) (done * 100 / total).toInt() else 0
-                        if (percent != lastPercent) {
-                            lastPercent = percent
-                            runOnUiThread {
-                                bar.setProgressCompat(percent, true)
-                                label.text = getString(
-                                    R.string.update_progress,
-                                    Formatter.formatShortFileSize(this@MainActivity, done),
-                                    Formatter.formatShortFileSize(this@MainActivity, total.coerceAtLeast(done)),
-                                )
-                            }
-                        }
-                    }
-                }
-                label.text = getString(R.string.update_installing)
-                withContext(Dispatchers.IO) { Updater.install(applicationContext, apk) }
-                dialog.dismiss()
-            } catch (e: Exception) {
-                dialog.dismiss()
-                if (!cancelled) toast(getString(R.string.update_failed, e.message ?: e.javaClass.simpleName))
-            }
-        }
+        Edition.setUpAppUpdates(this, findViewById(R.id.checkUpdatesButton)) { sending || queueActive }
+        uiReady = true
     }
 
     /** After the phone app updates, offer to bring the watch app up to the bundled version. */
@@ -358,46 +225,27 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         val code = watchVersionCode
         val outdated = if (code != null) code < BuildConfig.WATCH_VERSION_CODE else watchVersionUnknown
         if (!outdated || watchUpdatePromptShown || targetNode == null || isFinishing) return
-        if (sending || queueActive || watchBusy || Updater.watchSnoozed(this)) return
+        if (sending || queueActive || watchBusy || WatchUpdatePrefs.snoozed(this)) return
         watchUpdatePromptShown = true
         MaterialAlertDialogBuilder(this)
             .setTitle(R.string.watch_update_title)
             .setMessage(
                 getString(
-                    R.string.watch_update_message,
+                    if (Edition.IS_PLAY) R.string.watch_update_message_play else R.string.watch_update_message,
                     watchVersionName?.let { "v$it" } ?: getString(R.string.an_older_version),
                     BuildConfig.WATCH_VERSION_NAME,
                 ),
             )
-            .setPositiveButton(R.string.update_now) { _, _ -> sendWatchAppUpdate() }
-            .setNegativeButton(R.string.remind_later) { _, _ -> Updater.remindWatchLater(this) }
+            .setPositiveButton(R.string.update_now) { _, _ -> updateWatchApp() }
+            .setNegativeButton(R.string.remind_later) { _, _ -> WatchUpdatePrefs.remindLater(this) }
             .show()
     }
 
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_LONG).show()
 
     override fun onDestroy() {
-        if (::relaySwitch.isInitialized) Wearable.getMessageClient(this).removeListener(this)
+        if (uiReady) Wearable.getMessageClient(this).removeListener(this)
         super.onDestroy()
-    }
-
-    private fun renderRelayStatus(status: RelayService.Status) {
-        if (!relaySwitch.isChecked) {
-            relayStatusText.visibility = View.GONE
-            return
-        }
-        relayStatusText.visibility = View.VISIBLE
-        relayStatusText.text = when (status) {
-            is RelayService.Status.Listening ->
-                getString(R.string.relay_status_listening, status.addresses.joinToString())
-            RelayService.Status.Starting -> getString(R.string.relay_status_starting)
-            RelayService.Status.Off -> getString(R.string.relay_status_off)
-            is RelayService.Status.Error -> getString(R.string.relay_status_error, status.message)
-        }
-    }
-
-    private fun startRelayIfEnabled() {
-        if (RelayService.isEnabled(this)) runCatching { RelayService.start(this) }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -539,7 +387,7 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
 
     private fun handleIncomingIntent(intent: Intent?) {
         if (intent?.action == ACTION_RELAYED_FILE) {
-            val files = RelayService.batchFiles(this)
+            val files = Edition.relayedFiles(this)
             if (files.isNotEmpty()) {
                 setSelectedFiles(files.map { Picked(Uri.fromFile(it), it.name, it.length()) })
                 statusText.text = getString(R.string.relay_received)
@@ -779,7 +627,9 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
             watchVersionUnknown -> "Watch app: older than v$bundledName. Update available: v$bundledName"
             else -> "Watch app: checking version…"
         }
-        updateWatchButton.text = if (code != null && code >= bundledCode) {
+        updateWatchButton.text = if (Edition.IS_PLAY) {
+            getString(R.string.watch_app_play_store)
+        } else if (code != null && code >= bundledCode) {
             getString(R.string.reinstall_watch_app, bundledName)
         } else {
             getString(R.string.update_watch_app_to, bundledName)
@@ -841,18 +691,35 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         }
     }
 
-    /** Pushes the watch app bundled in this phone app to the watch, which installs it over itself. */
-    private fun sendWatchAppUpdate() {
-        val size = try {
-            assets.openFd(WATCH_APK_ASSET).use { it.length }
-        } catch (e: IOException) {
-            -1L
+    /**
+     * GitHub edition: pushes the watch app bundled in this phone app, which installs over itself.
+     * Play edition: opens the watch app's Play Store page on the watch.
+     */
+    private fun updateWatchApp() {
+        val bundled = Edition.bundledWatchApp(this)
+        if (bundled == null) {
+            openWatchAppInPlayStore()
+            return
         }
-        val name = "WatchApkInstaller-watch-${BuildConfig.WATCH_VERSION_NAME}.apk"
         // Wi-Fi first (falls back to Bluetooth) if the watch app already supports it.
-        val useWifi = preferWifi() && size > 0 &&
+        val useWifi = preferWifi() && bundled.size > 0 &&
             (watchVersionCode ?: 0) >= Protocol.MIN_WATCH_VERSION_FOR_WIFI
-        sendToWatch(SendSource(name, size, install = true) { assets.open(WATCH_APK_ASSET) }, useWifi)
+        sendToWatch(SendSource(bundled.name, bundled.size, install = true, open = bundled.open), useWifi)
+    }
+
+    private fun openWatchAppInPlayStore() {
+        val node = targetNode
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$packageName"))
+            .addCategory(Intent.CATEGORY_BROWSABLE)
+        lifecycleScope.launch {
+            try {
+                if (node == null) throw IOException("No watch connected")
+                remoteActivityHelper.startRemoteActivity(intent, node.id).await()
+                toast(getString(R.string.play_store_opened_on_watch))
+            } catch (e: Exception) {
+                toast(getString(R.string.play_store_open_failed))
+            }
+        }
     }
 
     private fun sendToWatch(source: SendSource, useWifi: Boolean = false) {
@@ -1129,7 +996,6 @@ class MainActivity : AppCompatActivity(), MessageClient.OnMessageReceivedListene
         private const val WIFI_BUFFER_SIZE = 256 * 1024
         private const val WIFI_DEFAULT_THRESHOLD = 10L * 1024 * 1024
         private const val BLUETOOTH_BYTES_PER_SEC = 150L * 1024
-        private const val WATCH_APK_ASSET = "watch-app.apk"
         private const val SETTINGS = "settings"
         private const val KEY_PREFER_WIFI = "prefer_wifi"
     }

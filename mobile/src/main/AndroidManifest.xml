@@ -4,18 +4,6 @@
     <!-- Fast transfers: a one-shot local server the watch downloads from over Wi-Fi. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- "Choose installed apps": list every app, including system apps. -->
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
-
-    <!-- Updating itself from GitHub Releases. -->
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
-
-    <!-- Secure Folder bridge (RelayService). -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
@@ -58,21 +46,5 @@
         <activity
             android:name=".AppPickerActivity"
             android:exported="false" />
-
-        <activity
-            android:name=".RelayActivity"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
-            android:exported="false"
-            android:label="@string/app_name"
-            android:launchMode="singleTop" />
-
-        <receiver
-            android:name=".UpdateResultReceiver"
-            android:exported="false" />
-
-        <service
-            android:name=".RelayService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
     </application>
 </manifest>

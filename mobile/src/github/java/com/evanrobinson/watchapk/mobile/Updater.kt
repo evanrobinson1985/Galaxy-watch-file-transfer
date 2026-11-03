@@ -28,7 +28,6 @@ object Updater {
     private const val PREFS = "updater"
     private const val KEY_LAST_CHECK = "last_check"
     private const val KEY_REMIND_AFTER = "remind_after"
-    private const val KEY_WATCH_REMIND_AFTER = "watch_remind_after"
 
     private const val CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L
     const val REMIND_LATER_MS = 24 * 60 * 60 * 1000L
@@ -52,13 +51,6 @@ object Updater {
 
     fun remindLater(context: Context) {
         prefs(context).edit().putLong(KEY_REMIND_AFTER, System.currentTimeMillis() + REMIND_LATER_MS).apply()
-    }
-
-    fun watchSnoozed(context: Context): Boolean =
-        System.currentTimeMillis() < prefs(context).getLong(KEY_WATCH_REMIND_AFTER, 0)
-
-    fun remindWatchLater(context: Context) {
-        prefs(context).edit().putLong(KEY_WATCH_REMIND_AFTER, System.currentTimeMillis() + REMIND_LATER_MS).apply()
     }
 
     /** Blocking. Returns the latest published release, or null if it has no phone APK. */

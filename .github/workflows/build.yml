@@ -18,8 +18,8 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Build phone and watch APKs (GitHub edition)
-        run: ./gradlew --no-daemon :mobile:assembleGithubDebug :wear:assembleDebug
+      - name: Build phone and watch APKs (GitHub edition, plus a Play edition preview)
+        run: ./gradlew --no-daemon :mobile:assembleGithubDebug :mobile:assemblePlayDebug :wear:assembleDebug
 
       - name: Collect APKs
         run: |
@@ -31,6 +31,18 @@ jobs:
         with:
           name: WatchApkInstaller-apks
           path: out/*.apk
+
+      # The Play edition's features, signed with the shared debug key so it installs over the
+      # GitHub edition (handy for store screenshots). Not part of the GitHub release.
+      - name: Collect Play edition preview
+        run: |
+          mkdir -p preview
+          cp mobile/build/outputs/apk/play/debug/mobile-play-debug.apk preview/WatchApkInstaller-phone-PLAY-PREVIEW.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WatchApkInstaller-play-preview
+          path: preview/*.apk
 
   # Google Play edition: release App Bundles for the phone and the watch, signed with the
   # upload key from repository secrets. Without the secrets it still builds them (unsigned)

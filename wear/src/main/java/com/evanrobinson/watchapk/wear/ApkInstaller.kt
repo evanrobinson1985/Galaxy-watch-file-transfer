@@ -53,11 +53,9 @@ object ApkInstaller {
         val apkEntries = splitApkEntries(file)
         val installer = context.packageManager.packageInstaller
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
+            // The user confirms every install. (Skipping that needs UPDATE_PACKAGES_WITHOUT_USER_ACTION,
+            // which Google Play reserves for app stores.)
             setInstallReason(PackageManager.INSTALL_REASON_USER)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                // Lets re-installs of apps we installed before skip the prompt where allowed.
-                setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
-            }
         }
 
         TransferControl.begin(context, null)

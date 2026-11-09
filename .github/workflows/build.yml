@@ -74,6 +74,15 @@ jobs:
           UPLOAD_KEY_PASSWORD: ${{ secrets.UPLOAD_KEY_PASSWORD }}
         run: ./gradlew --no-daemon :mobile:bundlePlayRelease :wear:bundleRelease
 
+      # The phone finds the watch app through its Wear OS capability list; make sure release
+      # resource shrinking didn't strip it from the watch bundle.
+      - name: Check watch bundle keeps its Wear OS capability
+        run: |
+          unzip -p wear/build/outputs/bundle/release/wear-release.aab base/resources.pb \
+            | grep -a -q android_wear_capabilities \
+            || { echo "::error::android_wear_capabilities missing from the watch bundle"; exit 1; }
+          echo "OK: android_wear_capabilities present"
+
       - name: Collect bundles
         run: |
           mkdir -p play
